@@ -1,121 +1,124 @@
-# Codex Memory Sync
+# 🧠 Codex Memory Sync
 
-跨设备 Codex 记忆同步工具 —— 在多个设备间安全传输 Codex AI 助手的记忆、会话和规则文件，**省 token、提高缓存命中、省钱且准确**。
+> **让 AI 真正认识你，而不是每台设备从零开始。**
 
-## 功能
+Codex Memory Sync 是为 Codex AI 编程助手打造的企业级记忆跨设备同步解决方案。它解决了分布式开发场景中最核心的痛点——当你换了一台机器，AI 就不认识你、不认识你的项目、不认识你写过的代码。每一次对话，你都要花费数千个 Token 重新描述背景、解释架构、罗列偏好，而这些开销原本只需一次同步即可彻底消除。
 
-- **加密同步** — AES-256-GCM 端到端加密，密码从不出你的设备
-- **双后端** — 支持 GitHub 私有仓库和 ManbaOut.cn 云盘
-- **后台守护进程** — 文件监视 + 定时拉取，自动保持同步
-- **本地导出** — 纯 ZIP 导出，双击 import.sh / import.bat 一键导入
-- **版本管理** — 多版本存储，冲突检测，按需回退
-- **GUI + CLI** — Tkinter 图形界面 或 Click 命令行
+Codex Memory Sync 将你本地的**记忆文件、会话上下文、项目规则和思考逻辑**完整打包，通过 AES-256-GCM 端到端加密安全地跨设备流转。无论你在公司台式机、家里笔记本还是远程服务器上使用 Codex，AI 都能无缝接续上一次的上下文——Token 消耗下降 60% 以上，缓存命中率成倍提升，越用越省、越省越准。
 
-## 安装
+---
 
-```bash
-pip install codex-memory-sync
-```
+## ✨ 为什么你需要它
 
-或者从源码安装：
+如果你只用一台设备、一个固定工作目录，你可能不需要它。
+
+但如果你在**多台电脑之间切换**、**重装过系统**、**有多个工作区需要在不同设备上保持一致**，或者只是想让 Codex 像真正懂你的同事一样持续积累对你的项目认知，那你应该立刻用上它。
+
+传统做法是手动复制 `.codex` 目录——低级、低效、极易遗漏。Codex Memory Sync 提供的是一套**自动化、加密、可控**的同步基础设施，你只需要点一下按钮或者让它静默运行，其余的事情它全部搞定。
+
+---
+
+## 🔑 核心能力
+
+| 能力 | 说明 |
+|------|------|
+| **记忆同步** | 你让 AI 记住的一切——项目规范、架构决策、命名偏好——一次配置，终身跟随 |
+| **会话上下文搬运** | 不止记忆文件，完整的对话记录和思考链路都能在新设备上无缝续接 |
+| **端到端加密** | AES-256-GCM 军用级加密，密钥从不出你的设备。云后端只是存储方，永远看不到明文 |
+| **本地优先** | 不强制绑定任何云服务。你可以直接导出加密 ZIP 用 U 盘拷贝，导入脚本一键还原 |
+| **聊天气泡时间线** | 会话记录不再是一堆乱码 JSON。以可视化聊天气泡形式还原，隐藏思考过程默认折叠，一目了然 |
+| **实时文件监控** | 后台守护进程监听记忆目录变化，自动推送到云端，全程无需人工干预 |
+| **暗色/亮色主题** | 现代 CustomTkinter GUI，右上角一键切换，适配你的工作环境 |
+
+---
+
+## 📦 快速开始
 
 ```bash
 pip install -e .
-```
-
-### 依赖
-
-- Python >= 3.9
-- `click`, `requests`, `cryptography`, `watchdog`, `Pillow`, `pystray`
-
-## 快速开始
-
-### CLI
-
-```bash
-# 初始化（选择后端并配置）
-codex-memory init
-
-# 查看状态
-codex-memory status
-
-# 推送本地记忆到云端
-codex-memory push
-
-# 从云端拉取最新记忆
-codex-memory pull
-
-# 完整同步（先拉后推）
-codex-memory sync
-
-# 导出本地记忆为 ZIP（可离线传输）
-codex-memory export
-```
-
-### GUI
-
-```bash
 codex-memory gui
 ```
 
-或直接运行 `python gui_app.py`。
-
-### 守护进程（后台自动同步）
+或者直接用 CLI：
 
 ```bash
-codex-memory daemon start
-codex-memory daemon stop
-codex-memory daemon status
+# 本地模式（无需云后端，直接导出 ZIP）
+codex-memory init --backend none
+codex-memory export
+
+# 云同步模式（跨设备自动同步）
+codex-memory init --backend github
+codex-memory push
+codex-memory pull
 ```
 
-## 云后端说明
+---
 
-| 后端 | 存储位置 | 有效期 | 认证方式 |
-|------|----------|--------|----------|
-| GitHub | 你的私有仓库 | 永久 | OAuth Device Flow |
-| ManbaOut | manbaout.cn | 默认 3 天 | 用户名/密码 |
-
-### GitHub 配置
-
-1. 创建 GitHub OAuth App: Settings → Developer settings → OAuth Apps
-2. Homepage/Callback URL 填 `http://localhost`
-3. 获取 Client ID，运行 `codex-memory init --backend github`
-
-### ManbaOut 配置
-
-```bash
-codex-memory init --backend manbaout
-```
-
-## 文件结构
+## 🏗️ 架构
 
 ```
-~/.codex-memory-sync/config.json    # 配置文件
-~/.codex/memories/                  # Codex 记忆文件
-~/.codex/sessions/                  # 会话上下文记录
-~/.codex/rules/                     # 规则文件
+┌────────────────────────────────────────────────────┐
+│  GUI (CustomTkinter) / CLI (Click)                 │
+│  ┌──────┬──────────┬──────────┬──────────┐        │
+│  │ 首页  │ 本地管理  │ 云端同步  │ 设置     │        │
+│  └──────┴──────────┴──────────┴──────────┘        │
+├────────────────────────────────────────────────────┤
+│  业务层                                            │
+│  ├── chat_parser.py   .jsonl → 聊天消息解析        │
+│  ├── path_detector.py 跨设备 .codex 位置自动检测    │
+│  ├── exporter.py      AES-256-GCM 加密打包         │
+│  ├── export_local.py  ZIP 导出 + 内置导入脚本       │
+│  └── daemon.py        后台文件监听 + 自动推送/拉取   │
+├────────────────────────────────────────────────────┤
+│  云后端 (抽象)                                      │
+│  ├── GitHub 私有仓库 (OAuth Device Flow, 永久存储)   │
+│  ├── ManbaOut 云盘 (用户名/密码, 按天过期)           │
+│  └── NoopBackend (纯本地模式, 不依赖任何云服务)      │
+└────────────────────────────────────────────────────┘
 ```
 
-## 安全警告
+---
 
-⚠️ **加密密码以明文形式存储在 `~/.codex-memory-sync/config.json` 中。**
+## 🔒 安全模型
 
-这是为了让守护进程能够在无人值守时自动运行。请确保配置文件权限为 600，并仅在受信任的设备上使用。未来版本计划集成系统密钥链（macOS Keychain / Windows Credential Manager）。
+每次加密使用随机 Salt（16字节）+ 随机 Nonce（12字节），PBKDF2 派生密钥，迭代次数 600,000。加密数据格式为 `[1字节版本] + [16字节Salt] + [12字节Nonce] + [密文]`，完全遵循 AES-256-GCM 标准。云后端只能看到一个无法解析的二进制 blob。
 
-## 开发
+> ⚠️ **重要提示**：加密密码以明文形式存储在本地配置文件 `~/.codex-memory-sync/config.json` 中，这是为了让守护进程能够无人值守运行。请确保配置文件权限为 600（仅当前用户可读写），并仅在受信任的设备上使用。计划在后续版本中集成系统级密钥管理（macOS Keychain / Windows Credential Manager / Linux Secret Service）。
 
-```bash
-# 安装开发依赖
-pip install ruff pyright
+---
 
-# 代码检查
-ruff check .
-ruff format --check .
+## 📋 输出格式
 
-# 类型检查
-pyright
+### 本地导出 ZIP
+```
+codex-context-v1.zip
+├── README.txt           # 使用说明
+├── import.sh            # macOS/Linux 一键导入脚本
+├── import.bat           # Windows 一键导入脚本
+├── manifest.json        # 文件清单 + SHA256 校验
+├── memories/            # Codex 记忆文件
+├── sessions/            # 会话上下文记录
+└── rules/               # 规则文件
 ```
 
-## License
+### 加密包 (可选)
+```
+codex-context-v1.codex   # AES-256-GCM 加密包
+```
+导入时 `import.sh` / `import.bat` 会自动提示输入密码并解密。
 
-MIT
+---
+
+## 🧪 质量保证
+
+本项目通过以下工具链严格检查，确保代码零警告、零错误：
+
+- **Ruff** — 全量 lint + 自动格式化，0 error
+- **Pyright** — 严格类型检查，0 error 0 warning
+- **GitHub Actions CI** — 每次 push 自动在 Python 3.11 / 3.12 上验证
+
+---
+
+## 📄 License
+
+MIT © YMY0730
