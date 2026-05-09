@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -110,6 +110,7 @@ function api(url, opts){
 
 // Helpers
 function esc(s){ var d = document.createElement('div'); d.textContent = (s || ''); return d.innerHTML; }
+function jesc(s){ return (s||'').replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 function fb(b){ return b ? (b<1024?b+' B':(b/1024).toFixed(1)+' KB') : ''; }
 
 // Nav
@@ -174,7 +175,7 @@ function fileGroup(title, items){
     if (!items || !items.length) return '';
     var h = '<div class="file-group-title">'+title+'</div>';
     items.forEach(function(f){
-        h += '<div class="file-item" onclick="previewFile(\''+esc(f.path||'')+'\')"><span class="name">'+esc(f.name)+'</span><span class="size">'+fb(f.size)+'</span></div>';
+        h += '<div class="file-item" onclick="previewFile(\''+jesc(f.path||'')+'\')"><span class="name">'+esc(f.name)+'</span><span class="size">'+fb(f.size)+'</span></div>';
     });
     return h;
 }
@@ -215,7 +216,7 @@ function loadSessions(){
         var cx = r[0], oc = r[1];
         var h1 = '<div class="card"><b>🧠 Codex ('+(cx.indexed||[]).length+')</b><div class="file-list" style="max-height:380px;margin-top:8px">';
         (cx.indexed||[]).forEach(function(s){
-            h1 += '<div class="file-item" onclick="previewFile(\''+esc(s.path)+'\')"><span class="name">'+esc(s.name)+'</span><span class="size">'+esc(s.size_fmt)+'</span></div>';
+            h1 += '<div class="file-item" onclick="previewFile(\''+jesc(s.path)+'\')"><span class="name">'+esc(s.name)+'</span><span class="size">'+esc(s.size_fmt)+'</span></div>';
         });
         h1 += '</div></div>';
         var h2 = '<div class="card"><b>💬 OpenCode ('+(oc||[]).length+')</b><div class="file-list" style="max-height:380px;margin-top:8px">';
