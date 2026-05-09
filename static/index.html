@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Codex Memory Sync</title>
+<style>
+:root{--bg:#f8fafc;--card:#fff;--text:#1e293b;--text2:#64748b;--accent:#3b82f6;--accent2:#2563eb;--green:#10b981;--amber:#f59e0b;--red:#ef4444;--border:#e2e8f0;--hover:#f1f5f9;--chat-user:#eff6ff;--chat-asst:#fff;--nav-bg:#1e293b;--nav-text:#e2e8f0;--shadow:0 1px 3px rgba(0,0,0,.08);--r:12px;--rs:8px}
+.dark{--bg:#0f172a;--card:#1e293b;--text:#e2e8f0;--text2:#94a3b8;--accent:#60a5fa;--green:#34d399;--amber:#fbbf24;--border:#334155;--hover:#1e293b;--chat-user:#1e3a5f;--chat-asst:#1e293b;--shadow:0 1px 3px rgba(0,0,0,.3)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font:14px/1.6 -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:var(--bg);color:var(--text);display:flex;min-height:100vh}
+nav{width:210px;background:var(--nav-bg);color:var(--nav-text);padding:24px 0;display:flex;flex-direction:column;flex-shrink:0}
+nav .logo{padding:0 18px 20px;font-size:17px;font-weight:700;user-select:none}
+nav .logo span{color:var(--accent)}
+nav a{display:block;padding:8px 18px;color:var(--nav-text);text-decoration:none;font-size:13px;border-left:3px solid transparent;transition:.15s;cursor:pointer;user-select:none}
+nav a:hover,nav a.active{background:rgba(255,255,255,.06);border-left-color:var(--accent)}
+nav button{display:block;width:100%;padding:8px 18px;margin-top:auto;color:var(--nav-text);background:none;border:none;cursor:pointer;font-size:13px;text-align:left}
+main{flex:1;padding:28px;overflow-y:auto}
+h2{font-size:20px;margin-bottom:18px;font-weight:700}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:14px;margin-bottom:22px}
+.stat-card{background:var(--card);border-radius:var(--r);padding:18px;box-shadow:var(--shadow);border:1px solid var(--border)}
+.stat-card .icon{font-size:26px;margin-bottom:6px}
+.stat-card .num{font-size:26px;font-weight:700;color:var(--accent)}
+.stat-card .label{font-size:11px;color:var(--text2);margin-top:2px}
+.card{background:var(--card);border-radius:var(--r);padding:20px;box-shadow:var(--shadow);border:1px solid var(--border);margin-bottom:18px}
+.split{display:grid;grid-template-columns:280px 1fr;gap:14px}
+.file-list{max-height:480px;overflow-y:auto}
+.file-item{display:flex;align-items:center;padding:5px 8px;cursor:pointer;border-radius:var(--rs);font-size:12px;gap:6px;transition:background .1s}
+.file-item:hover{background:var(--hover)}
+.file-item .name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.file-item .size{color:var(--text2);font-size:10px;white-space:nowrap}
+.file-group-title{font-weight:700;font-size:11px;color:var(--text2);padding:6px 4px;border-top:1px solid var(--border);margin-top:6px}
+.chat-view{max-height:480px;overflow-y:auto;padding:10px}
+.chat-msg{margin-bottom:8px;padding:10px 14px;border-radius:var(--r);font-size:12px;line-height:1.5;border:1px solid var(--border);background:var(--chat-asst)}
+.chat-msg.user{background:var(--chat-user);margin-left:24px;border-color:var(--accent)}
+.chat-msg .role{font-size:9px;font-weight:600;text-transform:uppercase;margin-bottom:3px}
+.chat-msg.user .role{color:var(--accent)}
+.chat-msg.assistant .role{color:var(--text2)}
+.chat-msg.meta,.chat-msg.event{font-size:10px;color:var(--text2);padding:4px 8px;border-radius:var(--rs);background:var(--hover);text-align:center}
+.chat-msg.thinking{font-size:10px;color:var(--amber);padding:4px 8px;border-radius:var(--rs);background:var(--hover);cursor:pointer}
+.chat-msg.tool{font-size:10px;color:var(--accent);font-family:monospace;padding:4px 8px;border-radius:var(--rs);background:var(--hover)}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:var(--rs);border:none;cursor:pointer;font-size:12px;font-weight:500;transition:.15s}
+.btn-primary{background:var(--accent);color:#fff}.btn-primary:hover{background:var(--accent2)}
+.btn-green{background:var(--green);color:#fff}.btn-green:hover{opacity:.85}
+.btn-red{background:var(--red);color:#fff}.btn-red:hover{opacity:.85}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}.btn-outline:hover{background:var(--hover)}
+.btn-sm{padding:3px 8px;font-size:10px}.btn-block{display:block;width:100%;justify-content:center;margin-top:6px}
+.bridge-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+input,select{width:100%;padding:7px 10px;border:1px solid var(--border);border-radius:var(--rs);font-size:12px;background:var(--card);color:var(--text);margin-bottom:6px;font-family:inherit}
+input:focus,select:focus{outline:none;border-color:var(--accent)}
+.toast{position:fixed;top:20px;right:20px;padding:10px 18px;border-radius:var(--rs);font-size:12px;z-index:100;opacity:0;transform:translateY(-8px);transition:.3s;pointer-events:none}
+.toast.show{opacity:1;transform:translateY(0)}
+.toast.ok{background:var(--green);color:#fff}.toast.err{background:var(--red);color:#fff}
+.empty{text-align:center;padding:30px;color:var(--text2)}
+.empty .big{font-size:44px;margin-bottom:6px}
+pre.code{white-space:pre-wrap;font-size:11px;font-family:Consolas,monospace;max-height:480px;overflow-y:auto;padding:10px;background:var(--hover);border-radius:var(--rs)}
+.result{font-size:11px;line-height:1.5}.result pre{white-space:pre-wrap;background:var(--hover);padding:10px;border-radius:var(--rs)}
+.bottom-btns{margin-top:10px;display:flex;gap:6px;flex-wrap:wrap}
+@media(max-width:768px){nav{width:50px}nav .logo,nav a,nav button{font-size:0;padding:8px 3px;text-align:center}main{padding:14px}.split{grid-template-columns:1fr}.bridge-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<nav>
+<div class="logo"><span>🧠</span> Codex Sync</div>
+<a data-page="home" class="active">🏠 仪表盘</a>
+<a data-page="local">💻 本地文件</a>
+<a data-page="sessions">💬 会话浏览</a>
+<a data-page="bridge">🔄 跨工具同步</a>
+<a data-page="export">📦 导出</a>
+<button id="themeBtn">🌙 暗色模式</button>
+</nav>
+<main id="main"><div class="empty"><div class="big">⏳</div>加载中...</div></main>
+<div id="toast" class="toast"></div>
+<script>
+(function(){
+var main = document.getElementById('main');
+var toast = document.getElementById('toast');
+var themeBtn = document.getElementById('themeBtn');
+var isDark = false;
+
+// Theme
+function setTheme(dark){
+    isDark = dark;
+    document.body.classList.toggle('dark', dark);
+    themeBtn.textContent = dark ? '☀️ 亮色模式' : '🌙 暗色模式';
+    try { localStorage.setItem('theme-cms', dark ? 'dark' : 'light'); } catch(e){}
+}
+try { if (localStorage.getItem('theme-cms') === 'dark') setTheme(true); } catch(e){}
+themeBtn.onclick = function(){ setTheme(!isDark); };
+
+// Toast
+function showToast(msg, err){
+    toast.textContent = msg;
+    toast.className = 'toast ' + (err ? 'err' : 'ok') + ' show';
+    setTimeout(function(){ toast.className = 'toast'; }, 2200);
+}
+
+// API
+function api(url, opts){
+    var init = { headers: {'Content-Type':'application/json'} };
+    if (opts) {
+        if (opts.method) init.method = opts.method;
+        if (opts.body) init.body = opts.body;
+    }
+    return fetch(url, init).then(function(r){
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+    });
+}
+
+// Helpers
+function esc(s){ var d = document.createElement('div'); d.textContent = (s || ''); return d.innerHTML; }
+function fb(b){ return b ? (b<1024?b+' B':(b/1024).toFixed(1)+' KB') : ''; }
+
+// Nav
+var navLinks = document.querySelectorAll('nav a[data-page]');
+navLinks.forEach(function(a){
+    a.onclick = function(){
+        navLinks.forEach(function(x){ x.classList.remove('active'); });
+        a.classList.add('active');
+        loadPage(a.getAttribute('data-page'));
+    };
+});
+
+// Page loader
+function loadPage(page){
+    main.innerHTML = '<div class="empty"><div class="big">⏳</div>loading</div>';
+    var loaders = {
+        'home': loadDashboard,
+        'local': loadLocal,
+        'sessions': loadSessions,
+        'bridge': loadBridge,
+        'export': loadExport
+    };
+    var fn = loaders[page] || loadDashboard;
+    try { fn(); } catch(e){ main.innerHTML = '<div class="empty"><div class="big">❌</div>'+esc(e.message)+'</div>'; }
+}
+
+// === Dashboard ===
+function loadDashboard(){
+    api('/api/stats').then(function(s){
+        main.innerHTML = '<h2>🏠 仪表盘</h2>'+
+        '<div class="stats">'+
+          statCard('📄','记忆文件',s.memories.count,s.memories.size_fmt)+
+          statCard('💬','会话记录',s.sessions.count,s.sessions.size_fmt)+
+          statCard('📋','规则文件',s.rules.count,s.rules.size_fmt)+
+          statCard('📦','总计',s.total.count,s.total.size_fmt)+
+        '</div>'+
+        '<div class="card"><b>📂 Codex 目录</b><p style="color:var(--text2);margin-top:6px;font-size:12px">'+esc(s.paths.root||'未检测到 .codex 目录')+'</p></div>'+
+        '<div class="card"><b>⚙️ 后端模式</b><p style="margin-top:6px;font-size:12px">'+(s.backend==='none'?'💻 本地模式':'☁️ '+esc(s.backend))+'</p>'+
+          '<div class="bottom-btns"><button class="btn btn-primary" onclick="loadPage(\'bridge\')">🔄 跨工具同步</button><button class="btn btn-outline" onclick="loadPage(\'export\')">📦 快速导出</button></div></div>';
+    }).catch(function(e){
+        main.innerHTML = '<div class="empty"><div class="big">❌</div>加载失败: '+esc(e.message)+'</div>';
+    });
+}
+function statCard(icon,label,num,size){
+    return '<div class="stat-card"><div class="icon">'+icon+'</div><div class="num">'+num+'</div><div class="label">'+label+' · '+size+'</div></div>';
+}
+
+// === Local ===
+function loadLocal(){
+    api('/api/local/files').then(function(data){
+        var L = '<div class="file-list">'+
+          fileGroup('📁 记忆文件', data.memories)+
+          fileGroup('💬 会话记录', data.sessions)+
+          fileGroup('📋 规则文件', data.rules)+
+        '</div>';
+        main.innerHTML = '<h2>💻 本地文件</h2><div class="split"><div class="card" style="padding:14px">'+L+'</div><div class="card" style="padding:14px"><div id="pv"><div class="empty"><div class="big">👁️</div>点击左侧文件预览</div></div></div></div>';
+    }).catch(function(e){
+        main.innerHTML = '<div class="empty"><div class="big">❌</div>'+esc(e.message)+'</div>';
+    });
+}
+function fileGroup(title, items){
+    if (!items || !items.length) return '';
+    var h = '<div class="file-group-title">'+title+'</div>';
+    items.forEach(function(f){
+        h += '<div class="file-item" onclick="previewFile(\''+esc(f.path||'')+'\')"><span class="name">'+esc(f.name)+'</span><span class="size">'+fb(f.size)+'</span></div>';
+    });
+    return h;
+}
+function previewFile(path){
+    var area = document.getElementById('pv');
+    if (!area) return;
+    if (!path){ area.innerHTML = '<div class="empty"><div class="big">📁</div>目录</div>'; return; }
+    area.innerHTML = '<div class="empty"><div class="big">⏳</div></div>';
+    api('/api/preview?path='+encodeURIComponent(path)).then(function(data){
+        if (data.type === 'chat'){
+            var h = '<div style="font-size:10px;color:var(--text2);margin-bottom:6px">💬 '+data.messages.length+' 条消息</div>';
+            h += '<div class="chat-view">';
+            data.messages.forEach(function(m){
+                if (m.kind === 'meta') h += '<div class="chat-msg meta">📋 '+esc(m.text)+'</div>';
+                else if (m.kind === 'event') h += '<div class="chat-msg event">'+esc(m.text)+'</div>';
+                else if (m.kind === 'thinking') h += '<div class="chat-msg thinking" title="思考过程">💭 '+esc((m.text||'').substring(0,180))+'</div>';
+                else if (m.kind === 'tool') h += '<div class="chat-msg tool">🔧 '+esc((m.text||'').substring(0,180))+'</div>';
+                else {
+                    var r = m.role==='user'?'user':'assistant';
+                    h += '<div class="chat-msg '+r+'"><div class="role">'+r+(m.timestamp?' · '+m.timestamp:'')+'</div>'+esc(m.text||'')+'</div>';
+                }
+            });
+            h += '</div>';
+            area.innerHTML = h;
+        } else {
+            area.innerHTML = '<div style="font-size:10px;color:var(--text2);margin-bottom:6px">📄 '+esc(data.name)+' · '+esc(data.size||'')+'</div><pre class="code">'+esc(data.content||'')+'</pre>';
+        }
+    }).catch(function(e){
+        area.innerHTML = '<div class="empty"><div class="big">❌</div>'+esc(e.message)+'</div>';
+    });
+}
+
+// === Sessions ===
+function loadSessions(){
+    var p1 = api('/api/codex/sessions').catch(function(){ return {indexed:[],unindexed_count:0}; });
+    var p2 = api('/api/opencode/sessions').catch(function(){ return []; });
+    Promise.all([p1,p2]).then(function(r){
+        var cx = r[0], oc = r[1];
+        var h1 = '<div class="card"><b>🧠 Codex ('+(cx.indexed||[]).length+')</b><div class="file-list" style="max-height:380px;margin-top:8px">';
+        (cx.indexed||[]).forEach(function(s){
+            h1 += '<div class="file-item" onclick="previewFile(\''+esc(s.path)+'\')"><span class="name">'+esc(s.name)+'</span><span class="size">'+esc(s.size_fmt)+'</span></div>';
+        });
+        h1 += '</div></div>';
+        var h2 = '<div class="card"><b>💬 OpenCode ('+(oc||[]).length+')</b><div class="file-list" style="max-height:380px;margin-top:8px">';
+        (oc||[]).forEach(function(s){
+            h2 += '<div class="file-item" onclick="loadOpenCodeSession(\''+s.id+'\')"><span class="name">'+esc(s.title)+'</span><span class="size">'+s.message_count+' msg</span></div>';
+        });
+        h2 += '</div></div>';
+        main.innerHTML = '<h2>💬 会话浏览</h2><div class="bridge-grid">'+h1+h2+'</div>';
+    }).catch(function(e){
+        main.innerHTML = '<div class="empty"><div class="big">❌</div>'+esc(e.message)+'</div>';
+    });
+}
+function loadOpenCodeSession(id){
+    api('/api/opencode/session/'+id).then(function(s){
+        var h = '<h2>💬 '+esc(s.title)+'</h2><p style="color:var(--text2);font-size:11px;margin-bottom:10px">📂 '+esc(s.directory)+' · '+s.messages.length+' 条消息</p>';
+        h += '<div class="chat-view">';
+        s.messages.forEach(function(m){
+            var text = '';
+            (m.parts||[]).forEach(function(p){ text += (p.text||'') + '\n'; });
+            var r = m.role==='user'?'user':'assistant';
+            h += '<div class="chat-msg '+r+'"><div class="role">'+r+'</div>'+esc(text)+'</div>';
+        });
+        h += '</div><button class="btn btn-outline" onclick="loadSessions()" style="margin-top:12px">← 返回会话列表</button>';
+        main.innerHTML = h;
+    }).catch(function(e){
+        main.innerHTML = '<div class="empty"><div class="big">❌</div>'+esc(e.message)+'</div>';
+    });
+}
+
+// === Bridge ===
+function loadBridge(){
+    var p1 = api('/api/codex/sessions').catch(function(){ return {indexed:[],unindexed_count:0}; });
+    var p2 = api('/api/opencode/sessions').catch(function(){ return []; });
+    Promise.all([p1,p2]).then(function(r){
+        var cx = r[0], oc = r[1];
+        var opts = '';
+        (oc||[]).forEach(function(s){ opts += '<option value="'+s.id+'">'+esc(s.title)+' ('+s.message_count+' msg)</option>'; });
+        main.innerHTML = '<h2>🔄 跨工具同步</h2><div class="bridge-grid">'+
+          '<div class="card"><b>🧠 Codex → OpenCode</b><p style="color:var(--text2);font-size:11px;margin-top:4px">'+(cx.indexed||[]).length+' 个已索引会话</p>'+
+            '<div class="bottom-btns">'+
+              '<button class="btn btn-primary btn-sm" onclick="bridgeAction(\'c2o\',\'agents\')">📄 AGENTS.md</button>'+
+              '<button class="btn btn-primary btn-sm" onclick="bridgeAction(\'c2o\',\'skills\')">📁 Skills</button>'+
+              '<button class="btn btn-primary btn-sm" onclick="bridgeAction(\'c2o\',\'memories\')">🧠 记忆</button>'+
+            '</div>'+
+            '<button class="btn btn-primary btn-block" onclick="bridgeAction(\'c2o\',\'sessions\')">📤 导入全部会话到 OpenCode</button>'+
+            '<button class="btn btn-primary btn-block" onclick="bridgeAction(\'c2o\',\'all\')">🚀 一键全部导入</button>'+
+          '</div>'+
+          '<div class="card"><b>💬 OpenCode → Codex</b><p style="color:var(--text2);font-size:11px;margin-top:4px">'+(oc||[]).length+' 个会话</p>'+
+            '<div class="bottom-btns">'+
+              '<button class="btn btn-green btn-sm" onclick="bridgeAction(\'o2c\',\'agents\')">📄 AGENTS.md</button>'+
+              '<button class="btn btn-green btn-sm" onclick="bridgeAction(\'o2c\',\'skills\')">📁 Skills</button>'+
+            '</div>'+
+            '<select id="bridgeOcSel"><option value="">-- 选择会话 --</option>'+opts+'</select>'+
+            '<button class="btn btn-green btn-block" onclick="bridgeAction(\'o2c\',\'sessions\')">📥 导出到 Codex</button>'+
+            '<button class="btn btn-green btn-block" onclick="bridgeAction(\'o2c\',\'all\')">🔄 一键全部导出</button>'+
+          '</div></div>'+
+          '<div id="bridgeResult" class="card result" style="margin-top:14px"></div>';
+    }).catch(function(e){ main.innerHTML = '<div class="empty"><div class="big">❌</div>'+esc(e.message)+'</div>'; });
+}
+function bridgeAction(dir, action){
+    var result = document.getElementById('bridgeResult');
+    if (result) result.innerHTML = '<div style="padding:20px;text-align:center">⏳ 同步中...</div>';
+    var sel = document.getElementById('bridgeOcSel');
+    var sid = sel ? sel.value : '';
+    api('/api/bridge/'+dir, {method:'POST', body:JSON.stringify({action:action, session_id:sid||undefined})}).then(function(r){
+        if (result) result.innerHTML = '<pre>'+esc(JSON.stringify(r,null,2))+'</pre>';
+        showToast('同步完成');
+    }).catch(function(e){
+        if (result) result.innerHTML = '<span style="color:var(--red)">'+esc(e.message)+'</span>';
+        showToast('同步失败', true);
+    });
+}
+
+// === Export ===
+function loadExport(){
+    api('/api/stats').then(function(s){
+        main.innerHTML = '<h2>📦 导出压缩包</h2><div class="card">'+
+          '<p>总文件: <b>'+s.total.count+'</b> 个, 总计: <b>'+s.total.size_fmt+'</b></p>'+
+          '<div style="margin:14px 0"><input id="exportPath" placeholder="保存路径" value="'+(s.paths.root||'')+'/../codex-context.zip"></div>'+
+          '<div style="margin:14px 0"><input id="exportPwd" type="password" placeholder="加密密码 (可选)"></div>'+
+          '<button class="btn btn-primary" onclick="doExport()">📦 开始导出</button></div>';
+    });
+}
+function doExport(){
+    var p = document.getElementById('exportPath').value;
+    var pwd = document.getElementById('exportPwd').value;
+    api('/api/export', {method:'POST', body:JSON.stringify({output:p, password:pwd||null})}).then(function(r){
+        showToast(r.ok ? '导出成功: '+r.path : '失败: '+r.error, !r.ok);
+    }).catch(function(e){ showToast('导出失败: '+esc(e.message), true); });
+}
+
+// Start
+loadPage('home');
+})();
+</script>
+</body>
+</html>
