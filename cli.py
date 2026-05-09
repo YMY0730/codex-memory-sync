@@ -591,5 +591,109 @@ def test():
         sys.exit(1)
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# 跨工具桥接命令
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+@cli.group()
+def bridge():
+    """Codex ↔ OpenCode 跨工具同步"""
+    pass
+
+
+@bridge.command("c2o")
+@click.option("--all", "-a", "all_sessions", is_flag=True, help="导入全部已索引会话")
+@click.option("--agents", "sync_agents", is_flag=True, help="同步 AGENTS.md")
+@click.option("--skills", "sync_skills_flag", is_flag=True, help="同步 Skills")
+@click.option("--memories", "sync_memories", is_flag=True, help="同步记忆文件到 OpenCode")
+@click.option("--dry-run", is_flag=True, help="预览模式")
+def bridge_c2o(all_sessions, sync_agents, sync_skills_flag, sync_memories, dry_run):
+    """Codex → OpenCode 导入"""
+    from src.bridge import (
+        codex_all_to_opencode,
+        sync_agents_md,
+        sync_memories_to_opencode,
+        sync_skills,
+    )
+    from src.export_local import discover_sessions
+
+    if sync_agents:
+        r = sync_agents_md("c2o")
+        click.echo(f"📄 AGENTS.md: {r.get('action', r.get('error', '?'))}")
+    if sync_skills_flag:
+        for r in sync_skills("c2o"):
+            click.echo(f"📁 Skills/{r.get('name', '?')}: {r.get('action', r.get('error', '?'))}")
+    if sync_memories:
+        r = sync_memories_to_opencode()
+        click.echo(f"🧠 记忆: {r.get('files', 0)} 个已追加到 OpenCode AGENTS.md")
+
+    if all_sessions:
+        sessions_dir = Path.home() / ".codex" / "sessions"
+        index_path = Path.home() / ".codex" / "session_index.jsonl"
+        indexed, _ = discover_sessions(sessions_dir, index_path)
+        if dry_run:
+            click.echo(f"🔍 预览: {len(indexed)} 个会话可导入")
+            for i, s in enumerate(indexed, 1):
+                click.echo(f"  [{i}] {s.get('thread_name', s['name'])}")
+        else:
+            for _s in indexed:
+                r = codex_all_to_opencode(dry_run=False)
+                for item in r:
+                    status = "✅" if item.get("ok") else "❌"
+                    click.echo(f"  {status} {item.get('title', '?')}: {item.get('message_count', 0)} 条")
+
+    if not any([all_sessions, sync_agents, sync_skills_flag, sync_memories]):
+        click.echo("用法: codex-memory bridge c2o --all --agents --skills --memories")
+
+
+@bridge.command("o2c")
+@click.option("--all", "-a", "all_sessions", is_flag=True, help="导出全部会话")
+@click.option("--agents", "sync_agents", is_flag=True, help="同步 AGENTS.md")
+@click.option("--skills", "sync_skills_flag", is_flag=True, help="同步 Skills")
+@click.option("--dry-run", is_flag=True, help="预览模式")
+def bridge_o2c(all_sessions, sync_agents, sync_skills_flag, dry_run):
+    """OpenCode → Codex 导出"""
+    from src.bridge import opencode_to_codex, read_opencode_db, sync_agents_md, sync_skills
+
+    data = read_opencode_db()
+    sessions = data.get("sessions", [])
+    click.echo(f"OpenCode: {len(sessions)} 个会话")
+
+    if sync_agents:
+        r = sync_agents_md("o2c")
+        click.echo(f"📄 AGENTS.md: {r.get('action', r.get('error', '?'))}")
+    if sync_skills_flag:
+        for r in sync_skills("o2c"):
+            click.echo(f"📁 Skills: {r.get('name', '?')} {r.get('action', '?')}")
+    if all_sessions:
+        for r in opencode_to_codex(dry_run=dry_run):
+            click.echo(f"  ✅ {r.get('title')} → {r.get('lines')} 行")
+    if not any([all_sessions, sync_agents, sync_skills_flag]):
+        for i, s in enumerate(sessions, 1):
+            click.echo(f"  [{i}] {s.get('title', s['id'][:12])} ({len(s.get('messages', []))} 条)")
+
+
+@bridge.command("list")
+def bridge_list():
+    """列出可同步的会话"""
+    from src.bridge import _codex_sessions_dir, read_opencode_db
+    from src.export_local import discover_sessions
+
+    click.echo("🧠 Codex:")
+    sd = _codex_sessions_dir()
+    if sd:
+        idx, unidx = discover_sessions(sd, sd.parent / "session_index.jsonl")
+        for i, s in enumerate(idx, 1):
+            click.echo(f"  [{i}] {s.get('thread_name', s['name'])} ({format_size(s['size'])})")
+        if unidx:
+            click.echo(f"  +{len(unidx)} 个未索引")
+    data = read_opencode_db()
+    if data.get("sessions"):
+        click.echo(f"\n💬 OpenCode ({len(data['sessions'])} 个):")
+        for i, s in enumerate(data["sessions"], 1):
+            click.echo(f"  [{i}] {s.get('title', s['id'][:12])} ({len(s.get('messages', []))} 条)")
+
+
 if __name__ == "__main__":
     cli()
