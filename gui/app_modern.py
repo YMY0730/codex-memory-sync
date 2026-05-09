@@ -161,12 +161,14 @@ class ModernApp(ctk.CTk):
         self.tab_home = self.tabview.add("🏠 首页")
         self.tab_local = self.tabview.add("💻 本地")
         self.tab_cloud = self.tabview.add("☁️ 云端")
+        self.tab_bridge = self.tabview.add("🔄 跨工具")
         self.tab_settings = self.tabview.add("⚙️ 设置")
 
         # 构建各标签页内容
         self._build_home_tab()
         self._build_local_tab()
         self._build_cloud_tab()
+        self._build_bridge_tab()
         self._build_settings_tab()
 
     def _build_home_tab(self):
@@ -558,6 +560,141 @@ class ModernApp(ctk.CTk):
 
         # 加载版本列表
         self._refresh_cloud_versions()
+
+    def _build_bridge_tab(self):
+        """跨工具同步标签页 — Codex ↔ OpenCode"""
+        container = ctk.CTkScrollableFrame(self.tab_bridge, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # === Codex → OpenCode ===
+        c2o_card = ctk.CTkFrame(container, corner_radius=16, fg_color=("white", COLORS["gray_800"]))
+        c2o_card.pack(fill="x", pady=8)
+
+        ctk.CTkLabel(c2o_card, text="🧠 Codex → OpenCode", font=ctk.CTkFont(size=16, weight="bold")).pack(
+            anchor="w", padx=20, pady=(20, 8)
+        )
+
+        c2o_btns = ctk.CTkFrame(c2o_card, fg_color="transparent")
+        c2o_btns.pack(fill="x", padx=20, pady=10)
+
+        for label, action in [
+            ("📄 同步 AGENTS.md", "agents"),
+            ("📁 同步 Skills", "skills"),
+            ("🧠 记忆 → AGENTS.md", "memories"),
+        ]:
+            ctk.CTkButton(
+                c2o_btns,
+                text=label,
+                font=ctk.CTkFont(size=12),
+                height=34,
+                corner_radius=8,
+                command=lambda a=action: self._bridge_action("c2o", a),
+            ).pack(side="left", padx=3)
+
+        ctk.CTkButton(
+            c2o_card,
+            text="📤 导入全部会话到 OpenCode",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            height=42,
+            corner_radius=10,
+            command=lambda: self._bridge_action("c2o", "sessions"),
+        ).pack(fill="x", padx=20, pady=10)
+
+        # === OpenCode → Codex ===
+        o2c_card = ctk.CTkFrame(container, corner_radius=16, fg_color=("white", COLORS["gray_800"]))
+        o2c_card.pack(fill="x", pady=8)
+
+        ctk.CTkLabel(o2c_card, text="💬 OpenCode → Codex", font=ctk.CTkFont(size=16, weight="bold")).pack(
+            anchor="w", padx=20, pady=(20, 8)
+        )
+
+        o2c_btns = ctk.CTkFrame(o2c_card, fg_color="transparent")
+        o2c_btns.pack(fill="x", padx=20, pady=10)
+
+        for label, action in [("📄 AGENTS.md → Codex", "agents"), ("📁 Skills → Codex", "skills")]:
+            ctk.CTkButton(
+                o2c_btns,
+                text=label,
+                font=ctk.CTkFont(size=12),
+                height=34,
+                corner_radius=8,
+                fg_color=COLORS["success"],
+                hover_color=self._darken_color(COLORS["success"]),
+                command=lambda a=action: self._bridge_action("o2c", a),
+            ).pack(side="left", padx=3)
+
+        ctk.CTkButton(
+            o2c_card,
+            text="📥 导出全部会话到 Codex",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            height=42,
+            corner_radius=10,
+            fg_color=COLORS["success"],
+            hover_color=self._darken_color(COLORS["success"]),
+            command=lambda: self._bridge_action("o2c", "sessions"),
+        ).pack(fill="x", padx=20, pady=10)
+
+        ctk.CTkButton(
+            o2c_card,
+            text="🔄 一键全部导出到 Codex",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            height=42,
+            corner_radius=10,
+            fg_color=COLORS["success"],
+            hover_color=self._darken_color(COLORS["success"]),
+            command=lambda: self._bridge_action("o2c", "all"),
+        ).pack(fill="x", padx=20, pady=(0, 20))
+
+        # 状态区域
+        self.bridge_status = ctk.CTkLabel(
+            container, text="", font=ctk.CTkFont(size=12), text_color=(COLORS["gray_400"], COLORS["gray_500"])
+        )
+        self.bridge_status.pack(pady=10)
+
+    def _bridge_action(self, direction, action):
+        """执行跨工具同步操作"""
+        try:
+            from src.bridge import (
+                codex_all_to_opencode,
+                opencode_to_codex,
+                sync_agents_md,
+                sync_memories_to_opencode,
+                sync_skills,
+            )
+
+            self.bridge_status.configure(text="⏳ 同步中...", text_color=COLORS["warning"])
+            self.update_idletasks()
+
+            if direction == "c2o":
+                if action == "agents":
+                    r = sync_agents_md("c2o")
+                elif action == "skills":
+                    r = sync_skills("c2o")
+                elif action == "memories":
+                    r = sync_memories_to_opencode()
+                elif action == "sessions":
+                    r = codex_all_to_opencode()
+                else:
+                    r = {"error": "未知操作"}
+            else:
+                if action == "agents":
+                    r = sync_agents_md("o2c")
+                elif action == "skills":
+                    r = sync_skills("o2c")
+                elif action == "sessions":
+                    r = opencode_to_codex()
+                else:
+                    r = {"error": "未知操作"}
+
+            import json
+
+            r_text = json.dumps(r, ensure_ascii=False, indent=2)
+            self.bridge_status.configure(
+                text=f"✅ 完成\n{r_text[:500]}",
+                text_color=COLORS["success"],
+            )
+        except Exception as e:
+            self.bridge_status.configure(text=f"❌ 失败: {e}", text_color=COLORS["danger"])
 
     def _build_settings_tab(self):
         """设置标签页"""

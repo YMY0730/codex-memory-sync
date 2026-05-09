@@ -101,6 +101,16 @@ def api_local_files():
                 "kind": "session",
             }
             for s in sessions_idx
+        ]
+        + [
+            {
+                "name": f"未索引: {p.name}",
+                "path": str(p),
+                "size": p.stat().st_size,
+                "updated": "",
+                "kind": "session_unindexed",
+            }
+            for p in sessions_un
         ],
         "rules": [{"name": r["name"], "path": str(r["path"]), "size": r["size"], "kind": "rule"} for r in rules],
     }
@@ -182,7 +192,16 @@ def api_codex_sessions():
             }
             for s in idx
         ],
-        "unindexed_count": len(unidx),
+        "unindexed": [
+            {
+                "name": f"未索引: {p.name}",
+                "path": str(p),
+                "size": p.stat().st_size,
+                "size_fmt": format_size(p.stat().st_size),
+                "updated": "",
+            }
+            for p in unidx
+        ],
     }
 
 
@@ -198,8 +217,12 @@ def api_bridge_c2o(data: dict[str, Any]):
     if action == "sessions":
         return codex_all_to_opencode()
     if action == "all":
-        return {"agents": sync_agents_md("c2o"), "skills": sync_skills("c2o"),
-                "memories": sync_memories_to_opencode(), "sessions": codex_all_to_opencode()}
+        return {
+            "agents": sync_agents_md("c2o"),
+            "skills": sync_skills("c2o"),
+            "memories": sync_memories_to_opencode(),
+            "sessions": codex_all_to_opencode(),
+        }
     return {"error": "未知操作"}
 
 
