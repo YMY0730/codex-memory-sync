@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 
 from src import config
-from src.cloud import CloudError, list_cloud_versions
+from src.cloud import CloudError, is_cloud_configured, list_cloud_versions
 from src.metadata import SyncStatus, compare
 
 from .tab_cloud import CloudTab
@@ -22,6 +22,8 @@ from .wizard import WizardWindow
 class MainWindow(tk.Tk):
     def __init__(self):
         super().__init__()
+
+        self.withdraw()
 
         self.title("Codex Memory Sync")
         self.geometry("780x600")
@@ -71,13 +73,16 @@ class MainWindow(tk.Tk):
         self._update_status()
         self.after(30000, self._periodic_refresh)
 
+        self.deiconify()
+
     def _check_first_run(self):
-        token = config.get_config_value("cloud", "token") or ""
-        enc_pwd = config.get_config_value("security", "encryption_password") or ""
-        if not token or not enc_pwd:
-            wizard = WizardWindow(self)
-            wizard.grab_set()
-            self.wait_window(wizard)
+        if config.is_cloud_configured():
+            token = config.get_config_value("cloud", "token") or ""
+            enc_pwd = config.get_config_value("security", "encryption_password") or ""
+            if not token or not enc_pwd:
+                wizard = WizardWindow(self)
+                wizard.grab_set()
+                self.wait_window(wizard)
 
     def _trigger_refresh(self):
         self._cloud_tab._refresh()
@@ -92,6 +97,12 @@ class MainWindow(tk.Tk):
         self.after(30000, self._periodic_refresh)
 
     def _update_status(self):
+        if not is_cloud_configured():
+            self._status_badge.set_status("#95a5a6")
+            self._status_text.set("本地模式")
+            self._sync_info_var.set("未配置云后端")
+            return
+
         try:
             versions = list_cloud_versions()
         except (CloudError, Exception):

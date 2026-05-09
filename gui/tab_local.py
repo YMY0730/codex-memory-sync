@@ -5,7 +5,7 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from src import config
-from src.cloud import list_cloud_versions
+from src.cloud import is_cloud_configured, list_cloud_versions
 from src.export_local import (
     create_export_zip,
     discover_memories,
@@ -112,7 +112,7 @@ class LocalTab(tk.Frame):
         self._update_totals()
 
         try:
-            versions = list_cloud_versions()
+            versions = list_cloud_versions() if is_cloud_configured() else []
         except Exception:
             versions = []
         result = compare(versions)
@@ -121,7 +121,7 @@ class LocalTab(tk.Frame):
             SyncStatus.LOCAL_AHEAD.value: "🟡 待推送",
             SyncStatus.CLOUD_AHEAD.value: "🔵 可拉取",
             SyncStatus.CONFLICT.value: "🔴 冲突",
-            SyncStatus.UNINITIALIZED.value: "⚪ 未同步",
+            SyncStatus.UNINITIALIZED.value: "⚪ 本地模式",
         }
         self._status_var.set(
             f"{status_labels.get(result['status'], '')} | 本地 v{result['local']['version']} | 云端 v{result['cloud']['latest_version']}"

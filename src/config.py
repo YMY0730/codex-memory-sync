@@ -6,7 +6,11 @@ from pathlib import Path
 from typing import Any
 
 DEFAULT_CONFIG = {
-    "backend": "github",
+    "backend": "none",
+    "appearance": {
+        "mode": "Light",
+        "color_theme": "blue",
+    },
     "cloud": {
         "server_url": "https://manbaout.cn",
         "username": "",
@@ -98,7 +102,15 @@ def set_config_value(value: Any, *keys: str) -> None:
 
 
 def get_backend() -> str:
-    return get_config_value("backend") or "github"
+    return get_config_value("backend") or "none"
+
+
+def is_cloud_configured() -> bool:
+    backend = get_backend()
+    if backend == "none":
+        return False
+    token = get_config_value("cloud", "token") or get_config_value("github", "token") or ""
+    return bool(token)
 
 
 def set_backend(backend: str) -> None:

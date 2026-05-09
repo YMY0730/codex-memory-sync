@@ -8,6 +8,9 @@ from pathlib import Path
 
 import click
 
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 from src import config
 from src.cloud import (
     AuthError,
@@ -38,12 +41,16 @@ def cli():
 
 
 @cli.command()
-@click.option("--backend", type=click.Choice(["github", "manbaout"]), default="github", help="存储后端")
+@click.option("--backend", type=click.Choice(["github", "manbaout", "none"]), default="none", help="存储后端")
 def init(backend):
     """初始化配置"""
     config.set_backend(backend)
 
-    if backend == "github":
+    if backend == "none":
+        click.echo("💻 本地模式")
+        click.echo("无需配置云后端，可直接使用 `codex-memory export` 导出本地压缩包。\n")
+
+    elif backend == "github":
         click.echo("🐙 GitHub 私有仓库模式")
         click.echo("需要 GitHub OAuth App 的 Client ID")
         click.echo("获取: GitHub Settings → Developer settings → OAuth Apps → New OAuth App")
@@ -82,7 +89,7 @@ def init(backend):
             click.echo(f"❌ 网络错误: {e}", err=True)
             sys.exit(1)
 
-    else:
+    elif backend == "manbaout":
         click.echo("☁️ ManbaOut 云盘模式")
         click.echo("⚠️ 数据默认保存 3 天，到期自动清理\n")
 
@@ -102,9 +109,12 @@ def init(backend):
             click.echo(f"❌ 网络错误: {e}", err=True)
             sys.exit(1)
 
-    enc_password = click.prompt("加密密码", hide_input=True, confirmation_prompt=True)
-    config.update_security(enc_password)
-    click.echo(f"✅ 初始化完成！后端: {'GitHub' if backend == 'github' else 'ManbaOut'}")
+    if backend != "none":
+        enc_password = click.prompt("加密密码", hide_input=True, confirmation_prompt=True)
+        config.update_security(enc_password)
+
+    backend_labels = {"github": "🐙 GitHub", "manbaout": "☁️ ManbaOut", "none": "💻 本地模式"}
+    click.echo(f"✅ 初始化完成！后端: {backend_labels.get(backend, backend)}")
 
 
 @cli.command()
@@ -544,19 +554,30 @@ def gui():
     """启动图形界面"""
     config.ensure_config_dir()
     try:
-        from gui.app import main
+        from gui.app_modern import main
 
         main()
-    except ImportError as e:
-        click.echo(f"❌ 无法启动 GUI: {e}", err=True)
-        click.echo("请确保 tkinter 已安装", err=True)
-        sys.exit(1)
+    except ImportError:
+        try:
+            from gui.app import main
+
+            main()
+        except ImportError as e:
+            click.echo(f"❌ 无法启动 GUI: {e}", err=True)
+            click.echo("请确保 tkinter 已安装", err=True)
+            sys.exit(1)
 
 
 @cli.command()
 def test():
     """测试连接"""
     backend = config.get_backend()
+
+    if backend == "none":
+        click.echo("💻 本地模式")
+        click.echo("无需配置云后端，可直接使用 `codex-memory export` 导出本地压缩包。")
+        return
+
     try:
         info = test_connection()
         if backend == "github":

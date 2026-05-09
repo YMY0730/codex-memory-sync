@@ -4,13 +4,15 @@ from pathlib import Path
 from typing import Any
 
 from . import config
-from .cloud_base import CloudBackend
+from .cloud_base import AuthError, CloudBackend, CloudError, NetworkError, NoopBackend  # noqa: F401
 from .cloud_github import GitHubBackend
 from .cloud_manbaout import ManbaOutBackend
 
 
 def _get_backend() -> CloudBackend:
-    backend_type = config.get_config_value("backend") or "github"
+    backend_type = config.get_config_value("backend") or "none"
+    if backend_type == "none":
+        return NoopBackend()
     if backend_type == "manbaout":
         return ManbaOutBackend()
     return GitHubBackend()
@@ -95,3 +97,7 @@ def github_auth_poll(client_id: str, device_code: str) -> dict[str, Any]:
 def get_github_user() -> dict[str, Any]:
     backend = GitHubBackend()
     return backend._get_user()
+
+
+def is_cloud_configured() -> bool:
+    return config.is_cloud_configured()

@@ -55,8 +55,8 @@ class MemoryChangeHandler(FileSystemEventHandler):
 
 class WatchManager:
     def __init__(self):
-        self._observer: Observer | None = None
-        self._handler: MemoryChangeHandler | None = None
+        self._observer = None  # type: ignore[assignment]
+        self._handler = None  # type: ignore[assignment]
         self._running = False
 
     def start(self, path: Path, on_change: Callable[[], None]) -> None:

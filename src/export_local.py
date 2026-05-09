@@ -1,208 +1,62 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import os
-import time
 import zipfile
 from pathlib import Path
 from typing import Any
 
-from . import config
 from .utils import hash_file
 
 
-def _sha256_bytes(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+def _encrypt_zip_file(zip_path: Path, password: str) -> Path:
+    """用 AES-256-GCM 加密 ZIP 文件，返回加密后路径"""
+    import os as _os
+    import struct
 
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
-def _import_sh() -> str:
-    return r"""#!/bin/bash
-set -e
-TARGET_MEM="$HOME/.codex/memories"
-TARGET_SESS="$HOME/.codex/sessions"
-TARGET_RULES="$HOME/.codex/rules"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-NEW=0
-RENAMED=0
-today=$(date +%Y%m%d)
+    raw = zip_path.read_bytes()
+    salt = _os.urandom(16)
+    nonce = _os.urandom(12)
+    kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=600_000)
+    key = kdf.derive(password.encode("utf-8"))
+    aesgcm = AESGCM(key)
+    ciphertext = aesgcm.encrypt(nonce, raw, None)
 
-echo "🧠 Codex Memory Import"
-echo "======================"
-echo ""
-
-import_dir() {
-    local src_dir="$1"
-    local dest_dir="$2"
-    local label="$3"
-    if [ ! -d "$src_dir" ]; then
-        return
-    fi
-    echo "$label"
-    local _new=0
-    local _renamed=0
-    while IFS= read -r -d '' rel; do
-        local src="$src_dir/$rel"
-        local dest="$dest_dir/$rel"
-        mkdir -p "$(dirname "$dest")"
-        if [ -f "$dest" ]; then
-            local base="${dest##*/}"
-            local name="${base%.*}"
-            local ext="${base##*.}"
-            [ "$name" = "$ext" ] && ext=""
-            if [ -n "$ext" ]; then
-                local safe="${name}_imported_${today}.${ext}"
-            else
-                local safe="${base}_imported_${today}"
-            fi
-            cp "$src" "$(dirname "$dest")/$safe"
-            echo "⚠️   $rel → $(basename "$dest") 已重命名为 $safe"
-            _renamed=$((_renamed + 1))
-        else
-            cp "$src" "$dest"
-            echo "✅   $rel"
-            _new=$((_new + 1))
-        fi
-    done < <(cd "$src_dir" && find . -type f -print0)
-    echo "    → 新增 $_new，重命名 $_renamed"
-    echo ""
-}
-
-import_dir "$SCRIPT_DIR/memories" "$TARGET_MEM" "📁 记忆文件:"
-import_dir "$SCRIPT_DIR/sessions" "$TARGET_SESS" "📁 会话记录:"
-import_dir "$SCRIPT_DIR/rules" "$TARGET_RULES" "📁 规则文件:"
-
-echo "======================"
-echo "完成。打开 Codex 即可使用导入的上下文。"
-"""
-    return _import_sh
-
-
-def _import_bat() -> str:
-    return r"""@echo off
-setlocal enabledelayedexpansion
-set TARGET_MEM=%USERPROFILE%\.codex\memories
-set TARGET_SESS=%USERPROFILE%\.codex\sessions
-set TARGET_RULES=%USERPROFILE%\.codex\rules
-set SCRIPT_DIR=%~dp0
-set NEW=0
-set RENAMED=0
-
-for /f "tokens=2-4 delims=/- " %%a in ('date /t') do set today=%%c%%a%%b
-
-echo Codex Memory Import
-echo ======================
-echo.
-
-if exist "%SCRIPT_DIR%memories\" (
-    echo 📁 记忆文件:
-    for /r "%SCRIPT_DIR%memories" %%f in (*) do (
-        set "rel=%%f"
-        set "rel=!rel:%SCRIPT_DIR%memories\=!"
-        set "dest=%TARGET_MEM%\!rel!"
-        if not exist "!dest!\\..\\" mkdir "!dest!\\..\\" 2>nul
-        if exist "!dest!" (
-            set "name=%%~nf"
-            set "ext=%%~xf"
-            set "safe=!name!_imported_!today!!ext!"
-            copy "%%f" "%TARGET_MEM%\!safe!" >nul
-            echo ⚠️  !rel! -^> !safe! ^(原文件已存在^)
-            set /a RENAMED+=1
-        ) else (
-            copy "%%f" "!dest!" >nul
-            echo ✅ !rel!
-            set /a NEW+=1
-        )
-    )
-    echo.
-)
-
-if exist "%SCRIPT_DIR%sessions\" (
-    echo 📁 会话记录:
-    for /r "%SCRIPT_DIR%sessions" %%f in (*) do (
-        set "rel=%%f"
-        set "rel=!rel:%SCRIPT_DIR%sessions\=!"
-        set "dest=%TARGET_SESS%\!rel!"
-        if not exist "!dest!\\..\\" mkdir "!dest!\\..\\" 2>nul
-        if exist "!dest!" (
-            set "name=%%~nf"
-            set "ext=%%~xf"
-            set "safe=!name!_imported_!today!!ext!"
-            copy "%%f" "%TARGET_SESS%\!safe!" >nul
-            echo ⚠️  !rel! -^> !safe! ^(原文件已存在^)
-            set /a RENAMED+=1
-        ) else (
-            copy "%%f" "!dest!" >nul
-            echo ✅ !rel!
-            set /a NEW+=1
-        )
-    )
-    echo.
-)
-
-if exist "%SCRIPT_DIR%rules\" (
-    echo 📁 规则文件:
-    for /r "%SCRIPT_DIR%rules" %%f in (*) do (
-        set "rel=%%f"
-        set "rel=!rel:%SCRIPT_DIR%rules\=!"
-        set "dest=%TARGET_RULES%\!rel!"
-        if not exist "!dest!\\..\\" mkdir "!dest!\\..\\" 2>nul
-        if exist "!dest!" (
-            set "name=%%~nf"
-            set "ext=%%~xf"
-            set "safe=!name!_imported_!today!!ext!"
-            copy "%%f" "%TARGET_RULES%\!safe!" >nul
-            echo ⚠️  !rel! -^> !safe! ^(原文件已存在^)
-            set /a RENAMED+=1
-        ) else (
-            copy "%%f" "!dest!" >nul
-            echo ✅ !rel!
-            set /a NEW+=1
-        )
-    )
-    echo.
-)
-
-echo ======================
-echo ✅ 新增 !NEW! 个文件
-if !RENAMED! gtr 0 echo ⚠️  !RENAMED! 个文件因目标已存在，已重命名（原文件未修改）
-echo.
-echo 完成。
-pause
-"""
-    return _import_bat
-
-
-def _readme() -> str:
-    return """Codex Memory Import - 一键导入记忆和上下文
-============================================
-
-使用方法:
-  macOS / Linux:  双击 import.sh 或在终端运行 bash import.sh
-  Windows:        双击 import.bat
-
-导入内容:
-  memories/   → ~/.codex/memories/     (Codex 记忆文件)
-  sessions/   → ~/.codex/sessions/     (会话上下文记录)
-  rules/      → ~/.codex/rules/        (规则文件)
-
-防覆盖保护:
-  如果目标文件已存在，导入文件会自动重命名为 xxx_imported_日期.ext
-  原有文件不会被修改或删除。
-
-manifest.json 中包含每个文件的 SHA256，可用于校验完整性。
-"""
+    enc_path = zip_path.with_suffix(".codex")
+    header = struct.pack(">B", 1) + salt + nonce
+    enc_path.write_bytes(header + ciphertext)
+    zip_path.unlink(missing_ok=True)
+    return enc_path
 
 
 def build_manifest(entries: list[dict[str, Any]]) -> dict[str, Any]:
     return {
-        "version": config.get_config_value("metadata", "local_version") or 1,
-        "device": config.get_config_value("metadata", "device_id") or "unknown",
-        "exported_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "version": _config_get("metadata", "local_version") or 1,
+        "device": _config_get("metadata", "device_id") or "unknown",
+        "exported_at": _time_now(),
         "total_files": len(entries),
         "total_size": sum(e.get("size", 0) for e in entries),
         "files": entries,
     }
+
+
+def _config_get(*keys: str) -> Any:
+    try:
+        from . import config
+
+        return config.get_config_value(*keys)
+    except Exception:
+        return ""
+
+
+def _time_now() -> str:
+    import datetime
+
+    return datetime.datetime.now().isoformat()
 
 
 def create_export_zip(
@@ -213,16 +67,14 @@ def create_export_zip(
     memory_dir: Path,
     session_dir: Path,
     rule_dir: Path,
+    password: str | None = None,
 ) -> Path:
     entries: list[dict[str, Any]] = []
 
     with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Readme
-        zf.writestr("README.txt", _readme())
-
-        # Import scripts
-        zf.writestr("import.sh", _import_sh())
-        zf.writestr("import.bat", _import_bat())
+        zf.writestr("README.txt", _readme(password is not None))
+        zf.writestr("import.sh", _import_sh(password is not None))
+        zf.writestr("import.bat", _import_bat(password is not None))
 
         # Memory files
         if memory_files:
@@ -276,7 +128,139 @@ def create_export_zip(
         manifest = build_manifest(entries)
         zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
 
+    if password:
+        return _encrypt_zip_file(output_path, password)
     return output_path
+
+
+def _readme(encrypted: bool = False) -> str:
+    extra = ""
+    if encrypted:
+        extra = "\n⚠️ 此包已加密。导入时需要输入密码解密。\n"
+    return f"""Codex Memory Import - 一键导入记忆和上下文
+============================================
+
+使用方法:
+  macOS / Linux:  双击 import.sh 或在终端运行 bash import.sh
+  Windows:        双击 import.bat
+{extra}
+导入内容:
+  memories/   → ~/.codex/memories/     (Codex 记忆文件)
+  sessions/   → ~/.codex/sessions/     (会话上下文记录)
+  rules/      → ~/.codex/rules/        (规则文件)
+
+防覆盖保护:
+  如果目标文件已存在，导入文件会自动重命名为 xxx_imported_日期.ext
+
+manifest.json 中包含每个文件的 SHA256，可用于校验完整性。
+"""
+
+
+def _import_sh(encrypted: bool = False) -> str:
+    decrypt_block = ""
+    if encrypted:
+        decrypt_block = """
+echo ""
+read -s -p "输入导出时设置的密码: " DECRYPT_PWD
+echo ""
+echo "🔓 正在解密..."
+python3 -c "
+import sys,struct,os
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
+data=open(sys.argv[1],'rb').read()
+salt,nonce=data[1:17],data[17:29]
+ct=data[29:]
+kdf=PBKDF2HMAC(algorithm=hashes.SHA256(),length=32,salt=salt,iterations=600000)
+key=kdf.derive(sys.argv[2].encode())
+aesgcm=AESGCM(key)
+plain=aesgcm.decrypt(nonce,ct,None)
+open(sys.argv[3],'wb').write(plain)
+" "$SCRIPT_DIR/$0" "$DECRYPT_PWD" "$SCRIPT_DIR/__d.zip" 2>/dev/null
+if [ $? -ne 0 ] || [ ! -f "$SCRIPT_DIR/__d.zip" ]; then echo "❌ 密码错误"; exit 1; fi
+unzip -qo "$SCRIPT_DIR/__d.zip" -d "$SCRIPT_DIR" >/dev/null 2>&1
+rm -f "$SCRIPT_DIR/__d.zip"
+exit 0
+"""
+    return f"""#!/bin/bash
+set -e
+TARGET_MEM="$HOME/.codex/memories"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+{decrypt_block}
+import_dir() {{
+    local src="$1"; local dest="$2"; local label="$3"
+    [ ! -d "$src" ] && return
+    echo "$label"
+    local n=0; local r=0; local today=$(date +%Y%m%d)
+    while IFS= read -r -d '' rel; do
+        local s="$src/$rel"; local d="$dest/$rel"
+        mkdir -p "$(dirname "$d")"
+        if [ -f "$d" ]; then
+            local b="${{d##*/}}"; local nm="${{b%.*}}"; local ex="${{b##*.}}"
+            [ "$nm" = "$ex" ] && ex=""
+            [ -n "$ex" ] && local sf="${{nm}}_imported_${{today}}.${{ex}}" || local sf="${{b}}_imported_${{today}}"
+            cp "$s" "$(dirname "$d")/$sf"
+            n=$((n+1))
+        else
+            cp "$s" "$d"; r=$((r+1))
+        fi
+    done < <(cd "$src" && find . -type f -print0)
+    echo "    -> 导入 $r 个"
+}}
+import_dir "$SCRIPT_DIR/memories" "$TARGET_MEM" "📁 记忆文件:"
+import_dir "$SCRIPT_DIR/sessions" "$HOME/.codex/sessions" "📁 会话记录:"
+import_dir "$SCRIPT_DIR/rules" "$HOME/.codex/rules" "📁 规则文件:"
+echo "完成。"
+"""
+
+
+def _import_bat(encrypted: bool = False) -> str:
+    decrypt_block = ""
+    if encrypted:
+        decrypt_block = """set /p DECRYPT_PWD="输入导出时设置的密码: "
+echo 解密中...
+python -c "import sys,struct,os;from cryptography.hazmat.primitives.ciphers.aead import AESGCM;from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC;from cryptography.hazmat.primitives import hashes;data=open(sys.argv[1],'rb').read();s,n,ct=data[1:17],data[17:29],data[29:];kdf=PBKDF2HMAC(algorithm=hashes.SHA256(),length=32,salt=s,iterations=600000);key=kdf.derive(sys.argv[2].encode());aesgcm=AESGCM(key);open(sys.argv[3],'wb').write(aesgcm.decrypt(n,ct,None))" "%%~f0" "%%DECRYPT_PWD%%" "%%~dp0__d.zip" 2>nul
+if not exist "%%~dp0__d.zip" (echo 密码错误&& pause && exit /b 1)
+"""
+    return f"""@echo off
+setlocal enabledelayedexpansion
+{decrypt_block}
+set TARGET_MEM=%%USERPROFILE%%\\.codex\\memories
+set SCRIPT_DIR=%%~dp0
+set NEW=0 && set RENAMED=0
+for /f "tokens=2-4 delims=/- " %%a in ('date /t') do set today=%%c%%a%%b
+echo Codex Memory Import
+echo ======================
+
+if exist "%%SCRIPT_DIR%%memories\\" (
+    echo 📁 记忆文件:
+    for /r "%%SCRIPT_DIR%%memories" %%f in (*) do (
+        set "rel=%%f" && set "rel=!rel:%%SCRIPT_DIR%%memories\\=!"
+        set "dest=%%TARGET_MEM%%\\!rel!"
+        mkdir "!dest!\\..\\" 2>nul
+        if exist "!dest!" (
+            set "safe=%%~nf_imported_!today!%%~xf"
+            copy "%%f" "%%TARGET_MEM%%\\!safe!" >nul && set /a RENAMED+=1
+        ) else (
+            copy "%%f" "!dest!" >nul && set /a NEW+=1
+        )
+    )
+    echo.
+)
+if exist "%%SCRIPT_DIR%%sessions\\" (
+    echo 📁 会话记录:
+    for /r "%%SCRIPT_DIR%%sessions" %%f in (*) do (
+        set "rel=%%f" && set "rel=!rel:%%SCRIPT_DIR%%sessions\\=!"
+        set "dest=%%USERPROFILE%%\\.codex\\sessions\\!rel!"
+        mkdir "!dest!\\..\\" 2>nul
+        if exist "!dest!" ( copy "%%f" "!dest!\\..\\%%~nf_imported_!today!%%~xf" >nul ) else ( copy "%%f" "!dest!" >nul )
+    )
+    echo.
+)
+echo 完成。
+pause
+"""
 
 
 def discover_sessions(
@@ -286,7 +270,7 @@ def discover_sessions(
     indexed: dict[str, dict] = {}
     if index_path.exists():
         try:
-            for line in index_path.read_text().strip().split("\n"):
+            for line in index_path.read_text(encoding="utf-8", errors="replace").strip().split("\n"):
                 if line.strip():
                     entry = json.loads(line)
                     indexed[entry["id"]] = {
