@@ -14,6 +14,7 @@ from src.bridge import (
     opencode_project_to_codex,
     opencode_to_codex,
     opencode_todos_to_memory,
+    read_opencode_by_directory,
     read_opencode_db,
     read_opencode_project_sessions,
     read_opencode_projects,
@@ -153,6 +154,12 @@ def api_opencode_sessions():
         }
         for s in sessions
     ]
+
+
+@app.get("/api/opencode/directories")
+def api_opencode_directories():
+    """按工作目录分组的 OpenCode 会话"""
+    return read_opencode_by_directory()
 
 
 @app.get("/api/opencode/projects")

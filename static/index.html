@@ -202,45 +202,26 @@ function renderChat(msgs){
 // === Sessions ===
 function loadSessions(){
  var p1=api('/api/codex/sessions').catch(function(){return{indexed:[],unindexed:[]}});
- var p2=api('/api/opencode/projects').catch(function(){return[]});
+ var p2=api('/api/opencode/directories').catch(function(){return[]});
  Promise.all([p1,p2]).then(function(r){
   var cx=r[0],ocP=r[1];
   var allCx=(cx.indexed||[]).concat(cx.unindexed||[]);
   var L='<div class="file-list">';
   L+='<div style="font-weight:700;font-size:11px;color:var(--text2);padding:6px 4px;border-top:1px solid var(--border)">🧠 Codex ('+allCx.length+')</div>';
   allCx.forEach(function(s){L+='<div class="file-item" data-path="'+jesc(s.path||'')+'" onclick="previewSession(this)" style="padding:6px 8px"><span class="name">'+esc(s.name)+'</span><span class="size">'+esc(s.size_fmt||fb(s.size))+'</span></div>';});
-  L+='<div style="font-weight:700;font-size:11px;color:var(--text2);padding:6px 4px;border-top:1px solid var(--border);margin-top:12px">💬 OpenCode ('+(ocP||[]).length+' projects)</div>';
-  (ocP||[]).forEach(function(p){
-   var nm=p.name||p.worktree||'?';if(nm.length>40) nm='...'+nm.slice(-37);
-   L+='<div class="file-item" data-pid="'+p.id+'" onclick="expandOCProject(this)" style="padding:6px 8px;font-weight:600"><span class="name">📁 '+esc(nm)+'</span><span class="size">'+p.session_count+' sessions</span></div>';
-   L+='<div id="ocp_'+p.id+'" style="display:none;padding-left:16px"></div>';
+  L+='<div style="font-weight:700;font-size:11px;color:var(--text2);padding:6px 4px;border-top:1px solid var(--border);margin-top:12px">💬 OpenCode ('+(ocD||[]).length+' dirs)</div>';
+  (ocD||[]).forEach(function(d){
+   var nm=d.display_name||d.directory||'?';
+   L+='<div class="file-item" style="padding:6px 8px;font-weight:600"><span class="name">📁 '+esc(nm)+'</span><span class="size">'+d.session_count+' sessions</span></div>';
+   d.sessions.forEach(function(s){
+    var pv=s.preview||'';if(pv.length>60)pv=pv.substring(0,60)+'...';
+    L+='<div class="file-item" data-sid="'+s.id+'" onclick="viewOCSessionFull(this)" style="padding:3px 8px;font-size:11px;margin-left:12px"><span class="name">💬 '+esc(s.title)+'</span><span class="size">'+s.message_count+' msg</span></div>';
+    if(pv)L+='<div style="font-size:9px;color:var(--text2);padding:0 36px 2px">'+esc(pv)+'</div>';
+   });
   });
   L+='</div>';
   main.innerHTML='<h2>💬 会话</h2><div class="split"><div class="card" style="padding:14px">'+L+'</div><div class="card" style="padding:14px"><div id="spv"><div class="empty"><div class="big">👁️</div>点击左侧预览</div></div></div></div>';
  }).catch(function(e){main.innerHTML='<div class="empty"><div class="big">❌</div>'+esc(e.message)+'</div>'});
-}
-function expandOCProject(el){
- var pid=el.getAttribute('data-pid')||'',c=document.getElementById('ocp_'+pid);if(!c)return;
- if(c.style.display==='block'){c.style.display='none';return}
- c.innerHTML='<div style="padding:4px;color:var(--text2);font-size:11px">⏳</div>';c.style.display='block';
- api('/api/opencode/project/'+pid+'/sessions').then(function(ss){
-  var h='';ss.forEach(function(s){
-   var pv=s.preview||'';if(pv.length>60)pv=pv.substring(0,60)+'...';
-   h+='<div class="file-item" data-sid="'+s.id+'" onclick="viewOCSessionFull(this)" style="padding:3px 8px;font-size:11px"><span class="name">💬 '+esc(s.title)+'</span><span class="size">'+s.message_count+' msg</span></div>';
-   if(pv)h+='<div style="font-size:9px;color:var(--text2);padding:0 24px 2px">'+esc(pv)+'</div>';
-  });c.innerHTML=h||'<div style="font-size:10px;color:var(--text2)">无会话</div>';
- }).catch(function(e){c.innerHTML='<div style="color:var(--red);font-size:10px">'+esc(e.message)+'</div>'});
-}
-function viewOCSessionFull(el){
- var sid=el.getAttribute('data-sid')||'',area=document.getElementById('spv');if(!area)return;
- area.innerHTML='<div class="empty"><div class="big">⏳</div></div>';
- api('/api/opencode/session/'+sid).then(function(d){
-  if(d.error){area.innerHTML='<div class="empty"><div class="big">❌</div>'+esc(d.error)+'</div>';return}
-  var s=d.session,ms=d.messages,h='<div class="breadcrumb"><button onclick="loadSessions()">← 返回</button><span>'+esc(s.title||'?')+' · '+ms.length+' 条</span></div>';
-  h+='<div style="font-size:10px;color:var(--text2);margin-bottom:8px">📂 '+esc(s.directory||'')+'</div><div class="chat-view">';
-  ms.forEach(function(m){var md=m.data||{},r=md.role||'assistant';(m.parts||[]).forEach(function(p){var pd=p.data||{},t=pd.type||'text',tx=pd.text||'';if(t==='reasoning')h+='<div class="chat-msg thinking"><div class="body">💭 '+esc((tx||'').substring(0,300))+'</div></div>';else if(t==='tool'||t==='tool_use')h+='<div class="chat-msg tool"><div class="body">🔧 '+esc((tx||'').substring(0,200))+'</div></div>';else{var cl=r==='user'?'user':'assistant';h+='<div class="chat-msg '+cl+'"><div class="ts"></div><div class="body">'+esc(tx)+'</div></div>';}});});
-  h+='</div>';area.innerHTML=h;
- }).catch(function(e){area.innerHTML='<div class="empty"><div class="big">❌</div>'+esc(e.message)+'</div>'});
 }
 function previewSession(el){
  var path=el.getAttribute('data-path')||'',area=document.getElementById('spv');if(!path||!area)return;
@@ -251,7 +232,7 @@ function previewSession(el){
 // === Bridge ===
 function loadBridge(){
  var p1=api('/api/codex/sessions').catch(function(){return{indexed:[],unindexed:[]}});
- var p2=api('/api/opencode/projects').catch(function(){return[]});
+ var p2=api('/api/opencode/directories').catch(function(){return[]});
  Promise.all([p1,p2]).then(function(r){
   var cx=r[0],oc=r[1];
   var allCx=(cx.indexed||[]).concat(cx.unindexed||[]);

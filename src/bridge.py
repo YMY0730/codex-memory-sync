@@ -250,6 +250,91 @@ def read_opencode_project_sessions(project_id: str, db_path: Path | None = None)
     return sessions
 
 
+def read_opencode_by_directory(db_path: Path | None = None) -> list[dict[str, Any]]:
+    """按工作目录分组 OpenCode 会话 — 这才是用户视角的正确组织方式。
+
+    global project 混杂了多个完全不相关的目录，按 directory 分组才是对的。
+    """
+    if db_path is None:
+        db_path = _opencode_db_path()
+    if not db_path or not db_path.exists():
+        return []
+
+    conn = sqlite3.connect(str(db_path))
+    c = conn.cursor()
+
+    # 按 directory 分组，统计每组的会话数
+    c.execute(
+        "SELECT s.directory, COUNT(*) AS cnt, SUM((SELECT COUNT(*) FROM message WHERE session_id = s.id)) AS msg_total,"
+        "  MIN(s.time_created) AS first_created, MAX(s.time_updated) AS last_updated,"
+        "  p.worktree, p.vcs, p.name AS project_name"
+        " FROM session s JOIN project p ON s.project_id = p.id"
+        " GROUP BY s.directory ORDER BY last_updated DESC"
+    )
+    dir_rows = c.fetchall()
+
+    result = []
+    c2 = conn.cursor()
+    for dr in dir_rows:
+        directory, sc, msg_total, first_ts, last_ts, worktree, vcs, project_name = dr
+        if not directory:
+            directory = "/"
+
+        # 取该目录下的会话列表
+        c2.execute(
+            "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated,"
+            "  (SELECT COUNT(*) FROM message WHERE session_id = s.id) AS msg_count"
+            " FROM session s WHERE s.directory = ? ORDER BY s.time_created DESC",
+            (directory,),
+        )
+        sessions = []
+        c3 = conn.cursor()
+        for sr in c2.fetchall():
+            sid, title, _, created, updated, mc = sr
+            # 首条 user message 预览
+            c3.execute(
+                "SELECT p.data FROM part p JOIN message m ON p.message_id = m.id"
+                " WHERE m.session_id = ? AND json_extract(m.data, '$.role') = 'user'"
+                " ORDER BY m.time_created LIMIT 1",
+                (sid,),
+            )
+            prow = c3.fetchone()
+            preview = ""
+            if prow:
+                with contextlib.suppress(json.JSONDecodeError, TypeError):
+                    preview = json.loads(prow[0]).get("text", "")[:100]
+            sessions.append(
+                {
+                    "id": sid,
+                    "title": title,
+                    "directory": directory,
+                    "message_count": mc,
+                    "preview": preview,
+                    "created": created,
+                    "updated": updated,
+                }
+            )
+
+        display_name = directory
+        if len(display_name) > 50:
+            display_name = "..." + display_name[-47:]
+
+        result.append(
+            {
+                "directory": directory,
+                "display_name": display_name,
+                "session_count": sc,
+                "message_total": msg_total,
+                "sessions": sessions,
+                "first_created": first_ts,
+                "last_updated": last_ts,
+            }
+        )
+
+    conn.close()
+    return result
+
+
 def read_opencode_todos(project_id: str, db_path: Path | None = None) -> list[dict[str, Any]]:
     """读取指定项目关联的 todo 项"""
     if db_path is None:

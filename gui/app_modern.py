@@ -1214,17 +1214,17 @@ class ModernApp(ctk.CTk):
         self._refresh_oc_tree()
 
     def _refresh_oc_tree(self):
-        """刷新 OpenCode 项目列表"""
+        """刷新 OpenCode 目录树（按工作目录分组）"""
         for w in self.oc_scroll.winfo_children():
             w.destroy()
         self.oc_projects.clear()
         self.oc_vars.clear()
 
         try:
-            from src.bridge import read_opencode_projects
+            from src.bridge import read_opencode_by_directory
 
-            projects = read_opencode_projects()
-            if not projects:
+            directories = read_opencode_by_directory()
+            if not directories:
                 ctk.CTkLabel(
                     self.oc_scroll,
                     text="未检测到 OpenCode",
@@ -1233,67 +1233,52 @@ class ModernApp(ctk.CTk):
                 ).pack(pady=20)
                 return
 
-            for p in projects:
-                pid = p["id"]
-                name = p.get("name") or p.get("worktree", "global")
-                if len(name) > 45:
-                    name = "..." + name[-42:]
-                sc, tc = p.get("session_count", 0), p.get("todo_count", 0)
+            for d in directories:
+                dir_name = d.get("display_name", d["directory"])
+                if len(dir_name) > 50:
+                    dir_name = "..." + dir_name[-47:]
+                sc = d.get("session_count", 0)
 
-                # 项目标题行
-                proj_row = ctk.CTkFrame(self.oc_scroll, fg_color="transparent")
-                proj_row.pack(fill="x", padx=5, pady=(8, 2))
-
+                dir_row = ctk.CTkFrame(self.oc_scroll, fg_color="transparent")
+                dir_row.pack(fill="x", padx=5, pady=(8, 2))
                 var = ctk.BooleanVar(value=False)
-                self.oc_vars[pid] = var
+                self.oc_vars[dir_name] = var
                 ctk.CTkCheckBox(
-                    proj_row, text=f"📁 {name}", variable=var, font=ctk.CTkFont(size=12, weight="bold")
+                    dir_row, text=f"📁 {dir_name}", variable=var, font=ctk.CTkFont(size=12, weight="bold")
                 ).pack(side="left")
                 ctk.CTkLabel(
-                    proj_row,
-                    text=f"{sc} sessions, {tc} todos",
+                    dir_row,
+                    text=f"{sc} sessions",
                     font=ctk.CTkFont(size=10),
                     text_color=(COLORS["gray_400"], COLORS["gray_500"]),
                 ).pack(side="right")
 
-                # 加载项目下会话（内嵌展开）
-                try:
-                    from src.bridge import read_opencode_project_sessions
-
-                    sessions = read_opencode_project_sessions(pid)
-                    for s in sessions:
-                        sid = s["id"]
-                        title = s.get("title", "?")[:50]
-                        mc = s.get("message_count", 0)
-                        pv = (s.get("preview") or "")[:60]
-                        row = ctk.CTkFrame(self.oc_scroll, fg_color="transparent")
-                        row.pack(fill="x", padx=20, pady=1)
-                        ctk.CTkLabel(row, text=f"💬 {title}", font=ctk.CTkFont(size=11), cursor="hand2").pack(
-                            side="left"
-                        )
+                for s in d.get("sessions", []):
+                    sid = s["id"]
+                    title = s.get("title", "?")[:50]
+                    mc = s.get("message_count", 0)
+                    pv = (s.get("preview") or "")[:60]
+                    row = ctk.CTkFrame(self.oc_scroll, fg_color="transparent")
+                    row.pack(fill="x", padx=20, pady=1)
+                    lbl = ctk.CTkLabel(row, text=f"💬 {title}", font=ctk.CTkFont(size=11), cursor="hand2")
+                    lbl.pack(side="left")
+                    lbl.bind("<Button-1>", lambda e, sid=sid, t=title: self._preview_oc_session(sid, t))
+                    ctk.CTkLabel(
+                        row,
+                        text=f"{mc} msg",
+                        font=ctk.CTkFont(size=9),
+                        text_color=(COLORS["gray_400"], COLORS["gray_500"]),
+                    ).pack(side="right")
+                    if pv:
+                        pv_row = ctk.CTkFrame(self.oc_scroll, fg_color="transparent")
+                        pv_row.pack(fill="x", padx=28, pady=0)
                         ctk.CTkLabel(
-                            row,
-                            text=f"{mc} msg",
+                            pv_row,
+                            text=pv,
                             font=ctk.CTkFont(size=9),
                             text_color=(COLORS["gray_400"], COLORS["gray_500"]),
-                        ).pack(side="right")
-                        # 点击预览
-                        label = row.winfo_children()[0]
-                        label.bind("<Button-1>", lambda e, sid=sid, t=title: self._preview_oc_session(sid, t))
-                        if pv:
-                            pv_row = ctk.CTkFrame(self.oc_scroll, fg_color="transparent")
-                            pv_row.pack(fill="x", padx=28, pady=0)
-                            ctk.CTkLabel(
-                                pv_row,
-                                text=pv,
-                                font=ctk.CTkFont(size=9),
-                                text_color=(COLORS["gray_400"], COLORS["gray_500"]),
-                                anchor="w",
-                            ).pack(fill="x")
-                except Exception:
-                    ctk.CTkLabel(
-                        self.oc_scroll, text="加载会话失败", font=ctk.CTkFont(size=10), text_color=COLORS["danger"]
-                    ).pack(padx=20)
+                            anchor="w",
+                        ).pack(fill="x")
         except Exception as e:
             ctk.CTkLabel(
                 self.oc_scroll, text=f"加载失败: {e}", font=ctk.CTkFont(size=11), text_color=COLORS["danger"]
