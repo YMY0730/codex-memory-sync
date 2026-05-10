@@ -350,96 +350,102 @@ class ModernApp(ctk.CTk):
         ).pack(anchor="w")
 
     def _build_local_tab(self):
-        """本地管理 — 左侧树形文件列表 + 右侧预览（聊天/文本）"""
+        """本地管理 — Codex 树 + OpenCode 树 + 右侧预览"""
         main_frame = ctk.CTkFrame(self.tab_local, fg_color="transparent")
         main_frame.pack(fill="both", expand=True, padx=10, pady=10)
-        main_frame.grid_columnconfigure(0, weight=2)
-        main_frame.grid_columnconfigure(1, weight=3)
+        main_frame.grid_columnconfigure(0, weight=2)  # Codex
+        main_frame.grid_columnconfigure(1, weight=2)  # OpenCode
+        main_frame.grid_columnconfigure(2, weight=3)  # Preview
         main_frame.grid_rowconfigure(0, weight=1)
 
-        # ========== 左侧：树形文件列表 ==========
-        left_frame = ctk.CTkFrame(main_frame, corner_radius=16, fg_color=("white", COLORS["gray_800"]))
-        left_frame.grid(row=0, column=0, sticky="nsew", padx=5, pady=5)
-        left_frame.grid_rowconfigure(1, weight=1)
-        left_frame.grid_columnconfigure(0, weight=1)
+        # ========== Codex 文件树 ==========
+        cx_frame = ctk.CTkFrame(main_frame, corner_radius=16, fg_color=("white", COLORS["gray_800"]))
+        cx_frame.grid(row=0, column=0, sticky="nsew", padx=3, pady=5)
+        cx_frame.grid_rowconfigure(1, weight=1)
+        cx_frame.grid_columnconfigure(0, weight=1)
 
-        toolbar = ctk.CTkFrame(left_frame, fg_color="transparent")
-        toolbar.grid(row=0, column=0, sticky="ew", padx=15, pady=15)
-
-        ctk.CTkLabel(toolbar, text="📁 本地文件", font=ctk.CTkFont(size=16, weight="bold")).pack(side="left")
+        cx_toolbar = ctk.CTkFrame(cx_frame, fg_color="transparent")
+        cx_toolbar.grid(row=0, column=0, sticky="ew", padx=12, pady=10)
+        ctk.CTkLabel(cx_toolbar, text="🧠 Codex", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
+        ctk.CTkButton(cx_toolbar, text="☑", width=34, height=26, corner_radius=6, command=self._select_all_local).pack(
+            side="right", padx=2
+        )
         ctk.CTkButton(
-            toolbar, text="☑ 全选", width=60, height=30, corner_radius=8, command=self._select_all_local
-        ).pack(side="right", padx=2)
-        ctk.CTkButton(
-            toolbar,
-            text="☐ 取消",
-            width=60,
-            height=30,
-            corner_radius=8,
+            cx_toolbar,
+            text="☐",
+            width=34,
+            height=26,
+            corner_radius=6,
             fg_color=(COLORS["gray_200"], COLORS["gray_700"]),
             command=self._deselect_all_local,
         ).pack(side="right", padx=2)
 
-        self.files_scroll = ctk.CTkScrollableFrame(left_frame, fg_color="transparent")
-        self.files_scroll.grid(row=1, column=0, sticky="nsew", padx=15, pady=(0, 15))
-
+        self.files_scroll = ctk.CTkScrollableFrame(cx_frame, fg_color="transparent")
+        self.files_scroll.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
         self.file_vars: dict[str, ctk.BooleanVar] = {}
         self.file_path_map: dict[str, Path | None] = {}
         self.collapsed: dict[str, bool] = {}
 
-        # ========== 右侧：预览区 ==========
+        # ========== OpenCode 项目树 ==========
+        oc_frame = ctk.CTkFrame(main_frame, corner_radius=16, fg_color=("white", COLORS["gray_800"]))
+        oc_frame.grid(row=0, column=1, sticky="nsew", padx=3, pady=5)
+        oc_frame.grid_rowconfigure(1, weight=1)
+        oc_frame.grid_columnconfigure(0, weight=1)
+
+        oc_toolbar = ctk.CTkFrame(oc_frame, fg_color="transparent")
+        oc_toolbar.grid(row=0, column=0, sticky="ew", padx=12, pady=10)
+        ctk.CTkLabel(oc_toolbar, text="💬 OpenCode", font=ctk.CTkFont(size=14, weight="bold")).pack(side="left")
+        ctk.CTkButton(oc_toolbar, text="🔄", width=34, height=26, corner_radius=6, command=self._refresh_oc_tree).pack(
+            side="right"
+        )
+
+        self.oc_scroll = ctk.CTkScrollableFrame(oc_frame, fg_color="transparent")
+        self.oc_scroll.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        self.oc_projects: dict[str, dict] = {}
+        self.oc_vars: dict[str, ctk.BooleanVar] = {}
+
+        # ========== 右侧预览区 ==========
         self.preview_frame = ctk.CTkFrame(main_frame, corner_radius=16, fg_color=("white", COLORS["gray_800"]))
-        self.preview_frame.grid(row=0, column=1, sticky="nsew", padx=5, pady=5)
+        self.preview_frame.grid(row=0, column=2, sticky="nsew", padx=5, pady=5)
         self.preview_frame.grid_rowconfigure(1, weight=1)
         self.preview_frame.grid_columnconfigure(0, weight=1)
 
-        # 面包屑导航
         self.breadcrumb_bar = ctk.CTkFrame(self.preview_frame, fg_color="transparent")
         self.breadcrumb_bar.grid(row=0, column=0, sticky="ew", padx=18, pady=15)
-
         self.back_btn = ctk.CTkButton(
             self.breadcrumb_bar,
-            text="← 返回列表",
-            width=80,
+            text="← 返回",
+            width=70,
             height=28,
             corner_radius=6,
             fg_color=(COLORS["gray_200"], COLORS["gray_700"]),
             text_color=(COLORS["gray_700"], COLORS["gray_200"]),
             command=self._go_back_to_tree,
         )
-
         self.breadcrumb_label = ctk.CTkLabel(
-            self.breadcrumb_bar,
-            text="",
-            font=ctk.CTkFont(size=12),
-            text_color=(COLORS["gray_400"], COLORS["gray_500"]),
+            self.breadcrumb_bar, text="", font=ctk.CTkFont(size=12), text_color=(COLORS["gray_400"], COLORS["gray_500"])
         )
 
-        # 欢迎提示
         self.welcome_frame = ctk.CTkFrame(self.preview_frame, fg_color="transparent")
         self.welcome_frame.grid(row=1, column=0, sticky="nsew")
-
         ctk.CTkLabel(self.welcome_frame, text="📂", font=ctk.CTkFont(size=64)).pack(pady=(40, 10))
-        ctk.CTkLabel(self.welcome_frame, text="选择左侧文件即可预览", font=ctk.CTkFont(size=16, weight="bold")).pack()
+        ctk.CTkLabel(self.welcome_frame, text="选择左侧文件预览", font=ctk.CTkFont(size=16, weight="bold")).pack()
         ctk.CTkLabel(
             self.welcome_frame,
-            text=".jsonl 会话 → 聊天时间线\n.md / .py / 其他 → 文本预览",
+            text="Codex .jsonl → 聊天  |  OpenCode 项目 → 展开会话",
             font=ctk.CTkFont(size=12),
             text_color=(COLORS["gray_400"], COLORS["gray_500"]),
         ).pack(pady=10)
 
-        # 预览容器（初始化隐藏）
         self.content_view: ctk.CTkFrame | None = None
         self.chat_view: ChatView | None = None
         self.text_preview: ctk.CTkTextbox | None = None
 
-        # 底部导出栏
+        # 底部
         bottom_bar = ctk.CTkFrame(main_frame, corner_radius=12, fg_color=(COLORS["gray_100"], COLORS["gray_800"]))
-        bottom_bar.grid(row=1, column=0, columnspan=2, sticky="ew", padx=5, pady=10)
-
+        bottom_bar.grid(row=1, column=0, columnspan=3, sticky="ew", padx=5, pady=10)
         self.local_status = ctk.CTkLabel(bottom_bar, text="已选择 0 个文件", font=ctk.CTkFont(size=13))
         self.local_status.pack(side="left", padx=20, pady=15)
-
         ctk.CTkButton(
             bottom_bar,
             text="📦 导出选中",
@@ -450,6 +456,7 @@ class ModernApp(ctk.CTk):
         ).pack(side="right", padx=20, pady=10)
 
         self._load_local_files()
+        self._load_oc_tree()
 
     def _build_cloud_tab(self):
         """云端同步标签页"""
@@ -1201,6 +1208,156 @@ class ModernApp(ctk.CTk):
 
     def _export_selected_local(self):
         self._do_local_export()
+
+    def _load_oc_tree(self):
+        """加载 OpenCode 项目树"""
+        self._refresh_oc_tree()
+
+    def _refresh_oc_tree(self):
+        """刷新 OpenCode 项目列表"""
+        for w in self.oc_scroll.winfo_children():
+            w.destroy()
+        self.oc_projects.clear()
+        self.oc_vars.clear()
+
+        try:
+            from src.bridge import read_opencode_projects
+
+            projects = read_opencode_projects()
+            if not projects:
+                ctk.CTkLabel(
+                    self.oc_scroll,
+                    text="未检测到 OpenCode",
+                    font=ctk.CTkFont(size=11),
+                    text_color=(COLORS["gray_400"], COLORS["gray_500"]),
+                ).pack(pady=20)
+                return
+
+            for p in projects:
+                pid = p["id"]
+                name = p.get("name") or p.get("worktree", "global")
+                if len(name) > 45:
+                    name = "..." + name[-42:]
+                sc, tc = p.get("session_count", 0), p.get("todo_count", 0)
+
+                # 项目标题行
+                proj_row = ctk.CTkFrame(self.oc_scroll, fg_color="transparent")
+                proj_row.pack(fill="x", padx=5, pady=(8, 2))
+
+                var = ctk.BooleanVar(value=False)
+                self.oc_vars[pid] = var
+                ctk.CTkCheckBox(
+                    proj_row, text=f"📁 {name}", variable=var, font=ctk.CTkFont(size=12, weight="bold")
+                ).pack(side="left")
+                ctk.CTkLabel(
+                    proj_row,
+                    text=f"{sc} sessions, {tc} todos",
+                    font=ctk.CTkFont(size=10),
+                    text_color=(COLORS["gray_400"], COLORS["gray_500"]),
+                ).pack(side="right")
+
+                # 加载项目下会话（内嵌展开）
+                try:
+                    from src.bridge import read_opencode_project_sessions
+
+                    sessions = read_opencode_project_sessions(pid)
+                    for s in sessions:
+                        sid = s["id"]
+                        title = s.get("title", "?")[:50]
+                        mc = s.get("message_count", 0)
+                        pv = (s.get("preview") or "")[:60]
+                        row = ctk.CTkFrame(self.oc_scroll, fg_color="transparent")
+                        row.pack(fill="x", padx=20, pady=1)
+                        ctk.CTkLabel(row, text=f"💬 {title}", font=ctk.CTkFont(size=11), cursor="hand2").pack(
+                            side="left"
+                        )
+                        ctk.CTkLabel(
+                            row,
+                            text=f"{mc} msg",
+                            font=ctk.CTkFont(size=9),
+                            text_color=(COLORS["gray_400"], COLORS["gray_500"]),
+                        ).pack(side="right")
+                        # 点击预览
+                        label = row.winfo_children()[0]
+                        label.bind("<Button-1>", lambda e, sid=sid, t=title: self._preview_oc_session(sid, t))
+                        if pv:
+                            pv_row = ctk.CTkFrame(self.oc_scroll, fg_color="transparent")
+                            pv_row.pack(fill="x", padx=28, pady=0)
+                            ctk.CTkLabel(
+                                pv_row,
+                                text=pv,
+                                font=ctk.CTkFont(size=9),
+                                text_color=(COLORS["gray_400"], COLORS["gray_500"]),
+                                anchor="w",
+                            ).pack(fill="x")
+                except Exception:
+                    ctk.CTkLabel(
+                        self.oc_scroll, text="加载会话失败", font=ctk.CTkFont(size=10), text_color=COLORS["danger"]
+                    ).pack(padx=20)
+        except Exception as e:
+            ctk.CTkLabel(
+                self.oc_scroll, text=f"加载失败: {e}", font=ctk.CTkFont(size=11), text_color=COLORS["danger"]
+            ).pack(pady=10)
+
+    def _preview_oc_session(self, session_id: str, title: str):
+        """预览 OpenCode 会话完整聊天"""
+        try:
+            from src.bridge import read_opencode_session_messages
+
+            from .chat_bubble import ChatView
+
+            data = read_opencode_session_messages(session_id)
+            if data.get("error"):
+                return
+            messages = data.get("messages", [])
+            session_info = data.get("session", {})
+
+            # 隐藏欢迎页
+            self.welcome_frame.grid_remove()
+            if self.content_view:
+                self.content_view.destroy()
+            self.chat_view = None
+            self.text_preview = None
+
+            self.back_btn.pack(side="left", padx=(0, 10))
+            self.breadcrumb_label.configure(text=f"OpenCode: {title} ({len(messages)} msg)")
+
+            self.content_view = ctk.CTkFrame(self.preview_frame, fg_color="transparent")
+            self.content_view.grid(row=1, column=0, sticky="nsew")
+            self.content_view.grid_columnconfigure(0, weight=1)
+            self.content_view.grid_rowconfigure(0, weight=1)
+
+            # 摘要条
+            summary = ctk.CTkFrame(
+                self.content_view, fg_color=(COLORS["gray_100"], COLORS["gray_800"]), corner_radius=10
+            )
+            summary.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+            ctk.CTkLabel(
+                summary,
+                text=f"💬 {title}  ·  {len(messages)} 条消息  ·  {session_info.get('directory', '?')}",
+                font=ctk.CTkFont(size=11),
+                text_color=(COLORS["gray_500"], COLORS["gray_400"]),
+            ).pack(padx=15, pady=10)
+
+            # 聊天时间线
+            chat_msgs = []
+            for m in messages:
+                md = m.get("data", {})
+                role = md.get("role", "assistant") if isinstance(md, dict) else "assistant"
+                for p in m.get("parts", []):
+                    pd = p.get("data", {}) if isinstance(p.get("data"), dict) else {}
+                    ptype = pd.get("type", "text")
+                    ptext = pd.get("text", "")
+                    kind = (
+                        "thinking" if ptype == "reasoning" else ("tool" if ptype in ("tool", "tool_use") else "message")
+                    )
+                    chat_msgs.append({"kind": kind, "role": role, "text": ptext, "timestamp": ""})
+
+            self.chat_view = ChatView(self.content_view, height=400)
+            self.chat_view.grid(row=1, column=0, sticky="nsew", padx=5)
+            self.chat_view.load_session(chat_msgs)
+        except Exception:
+            pass
 
     def _show_cloud_config(self, backend_type):
         """显示云配置对话框"""
