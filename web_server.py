@@ -281,19 +281,21 @@ def api_export(data: dict[str, Any]):
 
 @app.post("/api/export/file")
 def api_export_single_file(data: dict[str, Any]):
-    """导出单个文件为 ZIP"""
+    """导出单个文件为 ZIP，可指定自定义输出路径"""
     path = data.get("path", "")
+    output = data.get("output", "")
     password = data.get("password")
     fp = Path(path)
     if not fp.exists():
         return {"ok": False, "error": "文件不存在"}
 
     parent_dir = fp.parent
-    output = CODEX_HOME / f"{fp.name}-export.zip"
+    output_path = Path(output) if output else (CODEX_HOME / f"{fp.name}-export.zip")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
         result = create_export_zip(
-            output,
+            output_path,
             memory_files=[fp] if fp.suffix.lower() == ".md" else [],
             session_files=[fp] if fp.suffix.lower() == ".jsonl" else [],
             rule_files=[fp] if fp.suffix.lower() == ".rules" else [],
@@ -309,14 +311,16 @@ def api_export_single_file(data: dict[str, Any]):
 
 @app.post("/api/export/session")
 def api_export_session(data: dict[str, Any]):
-    """导出单个 Codex 会话 JSONL 为压缩包"""
+    """导出单个 Codex 会话 JSONL 为压缩包，可指定自定义输出路径"""
     path = data.get("path", "")
+    output = data.get("output", "")
     password = data.get("password")
     fp = Path(path)
     if not fp.exists():
         return {"ok": False, "error": "会话文件不存在"}
 
-    output = CODEX_HOME / f"session-{fp.stem}-export.zip"
+    output_path = Path(output) if output else (CODEX_HOME / f"session-{fp.stem}-export.zip")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     parent_dir = fp.parent
 
     try:
