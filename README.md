@@ -5,6 +5,10 @@
   <img src="https://img.shields.io/badge/Codex_↔_OpenCode-Bridge-10B981?style=for-the-badge" alt="Bridge">
 </p>
 
+<p align="right">
+  <b>🇨🇳 中文</b> &nbsp;|&nbsp; <a href="README_EN.md">🇺🇸 English</a>
+</p>
+
 # 🧠 Codex Memory Sync
 
 <p align="center">
