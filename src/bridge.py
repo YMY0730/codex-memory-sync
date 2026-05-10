@@ -127,29 +127,36 @@ def read_opencode_projects(db_path: Path | None = None) -> list[dict[str, Any]]:
 
     conn = sqlite3.connect(str(db_path))
     c = conn.cursor()
+    # 先读取全部项目行（避免内部 execute 打断外层迭代）
+    c.execute("SELECT * FROM PROJECT ORDER BY time_created")
+    project_rows = c.fetchall()
+    col_names = [col[0] for col in c.description]  # type: ignore[index]
 
     projects = []
-    for row in c.execute("SELECT * FROM project ORDER BY time_created"):
-        p = dict(zip([col[0] for col in c.description], row)) if isinstance(row, tuple) else dict(row)
+    c2 = conn.cursor()  # 独立游标用于子查询
+    for row in project_rows:
+        p = dict(zip(col_names, row))
         pid = p["id"]
 
-        c.execute("SELECT COUNT(*) FROM session WHERE project_id = ?", (pid,))
-        p["session_count"] = c.fetchone()[0]
+        c2.execute("SELECT COUNT(*) FROM session WHERE project_id = ?", (pid,))
+        p["session_count"] = c2.fetchone()[0]
 
-        c.execute(
+        c2.execute(
             "SELECT id, title, directory, time_created FROM session WHERE project_id = ? ORDER BY time_created DESC",
             (pid,),
         )
-        p["sessions"] = [dict(zip(["id", "title", "directory", "created"], r)) for r in c.fetchall()]
+        p["sessions"] = [dict(zip(["id", "title", "directory", "created"], r)) for r in c2.fetchall()]
 
-        c.execute("SELECT COUNT(*) FROM todo WHERE session_id IN (SELECT id FROM session WHERE project_id = ?)", (pid,))
-        p["todo_count"] = c.fetchone()[0]
+        c2.execute(
+            "SELECT COUNT(*) FROM todo WHERE session_id IN (SELECT id FROM session WHERE project_id = ?)", (pid,)
+        )
+        p["todo_count"] = c2.fetchone()[0]
 
-        c.execute(
+        c2.execute(
             "SELECT content, status, priority FROM todo WHERE session_id IN (SELECT id FROM session WHERE project_id = ?) LIMIT 50",
             (pid,),
         )
-        p["todos"] = [dict(zip(["content", "status", "priority"], r)) for r in c.fetchall()]
+        p["todos"] = [dict(zip(["content", "status", "priority"], r)) for r in c2.fetchall()]
 
         projects.append(p)
 

@@ -690,6 +690,8 @@ class ModernApp(ctk.CTk):
                 ).pack(fill="x", pady=2)
         except Exception as e:
             ctk.CTkLabel(self.oc_project_frame, text=f"加载失败: {e}", font=ctk.CTkFont(size=11)).pack(anchor="w")
+
+    def _load_cx_checkboxes(self):
         """加载 Codex 会话复选框列表"""
         for w in self.cx_frame.winfo_children():
             w.destroy()
