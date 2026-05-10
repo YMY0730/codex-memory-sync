@@ -228,6 +228,17 @@ function previewSession(el){
  area.innerHTML='<div class="empty"><div class="big">⏳</div></div>';
  api('/api/preview?path='+encodeURIComponent(path)).then(function(d){area.innerHTML=d.type==='chat'?renderChat(d.messages):'<pre class="code">'+esc(d.content||'')+'</pre>';}).catch(function(e){area.innerHTML='<div class="empty"><div class="big">❌</div>'+esc(e.message)+'</div>'});
 }
+function viewOCSessionFull(el){
+ var sid=el.getAttribute('data-sid')||'',area=document.getElementById('spv');if(!area)return;
+ area.innerHTML='<div class="empty"><div class="big">⏳</div></div>';
+ api('/api/opencode/session/'+sid).then(function(d){
+  if(d.error){area.innerHTML='<div class="empty"><div class="big">❌</div>'+esc(d.error)+'</div>';return}
+  var s=d.session,ms=d.messages,h='<div class="breadcrumb"><button onclick="loadSessions()">← 返回</button><span>'+esc(s.title||'?')+' · '+ms.length+' 条</span></div>';
+  h+='<div style="font-size:10px;color:var(--text2);margin-bottom:8px">📂 '+esc(s.directory||'')+'</div><div class="chat-view">';
+  ms.forEach(function(m){var md=m.data||{},r=md.role||'assistant';(m.parts||[]).forEach(function(p){var pd=p.data||{},t=pd.type||'text',tx=pd.text||'';if(t==='reasoning')h+='<div class="chat-msg thinking"><div class="body">💭 '+esc((tx||'').substring(0,300))+'</div></div>';else if(t==='tool'||t==='tool_use')h+='<div class="chat-msg tool"><div class="body">🔧 '+esc((tx||'').substring(0,200))+'</div></div>';else{var cl=r==='user'?'user':'assistant';h+='<div class="chat-msg '+cl+'"><div class="ts"></div><div class="body">'+esc(tx)+'</div></div>';}});});
+  h+='</div>';area.innerHTML=h;
+ }).catch(function(e){area.innerHTML='<div class="empty"><div class="big">❌</div>'+esc(e.message)+'</div>'});
+}
 
 // === Bridge ===
 function loadBridge(){
