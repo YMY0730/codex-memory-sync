@@ -11,8 +11,11 @@ from fastapi.responses import HTMLResponse
 from src import config
 from src.bridge import (
     codex_all_to_opencode,
+    opencode_project_to_codex,
     opencode_to_codex,
+    opencode_todos_to_memory,
     read_opencode_db,
+    read_opencode_projects,
     sync_agents_md,
     sync_memories_to_opencode,
     sync_skills,
@@ -150,6 +153,12 @@ def api_opencode_sessions():
     ]
 
 
+@app.get("/api/opencode/projects")
+def api_opencode_projects():
+    """OpenCode 项目列表（含会话和 todo 统计）"""
+    return read_opencode_projects()
+
+
 @app.get("/api/opencode/session/{session_id}")
 def api_opencode_session_detail(session_id: str):
     data = read_opencode_db()
@@ -226,12 +235,17 @@ def api_bridge_c2o(data: dict[str, Any]):
 def api_bridge_o2c(data: dict[str, Any]):
     action = data.get("action", "")
     session_id = data.get("session_id")
+    project_id = data.get("project_id")
     if action == "agents":
         return sync_agents_md("o2c")
     if action == "skills":
         return sync_skills("o2c")
     if action == "sessions":
-        return opencode_to_codex(session_id=session_id)
+        return opencode_to_codex(session_id=session_id, project_id=project_id)
+    if action == "project":
+        return opencode_project_to_codex(project_id or "global")
+    if action == "todos":
+        return opencode_todos_to_memory(project_id or "global")
     if action == "all":
         return opencode_to_codex()
     return {"error": "未知操作"}

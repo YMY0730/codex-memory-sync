@@ -118,6 +118,68 @@ def read_opencode_db(db_path: Path | None = None) -> dict[str, Any]:
     return {"sessions": sessions, "db_path": str(db_path)}
 
 
+def read_opencode_projects(db_path: Path | None = None) -> list[dict[str, Any]]:
+    """读取 OpenCode 项目列表，含每个项目的会话和 todo 统计"""
+    if db_path is None:
+        db_path = _opencode_db_path()
+    if not db_path or not db_path.exists():
+        return []
+
+    conn = sqlite3.connect(str(db_path))
+    c = conn.cursor()
+
+    projects = []
+    for row in c.execute("SELECT * FROM project ORDER BY time_created"):
+        p = dict(zip([col[0] for col in c.description], row)) if isinstance(row, tuple) else dict(row)
+        pid = p["id"]
+
+        c.execute("SELECT COUNT(*) FROM session WHERE project_id = ?", (pid,))
+        p["session_count"] = c.fetchone()[0]
+
+        c.execute(
+            "SELECT id, title, directory, time_created FROM session WHERE project_id = ? ORDER BY time_created DESC",
+            (pid,),
+        )
+        p["sessions"] = [dict(zip(["id", "title", "directory", "created"], r)) for r in c.fetchall()]
+
+        c.execute("SELECT COUNT(*) FROM todo WHERE session_id IN (SELECT id FROM session WHERE project_id = ?)", (pid,))
+        p["todo_count"] = c.fetchone()[0]
+
+        c.execute(
+            "SELECT content, status, priority FROM todo WHERE session_id IN (SELECT id FROM session WHERE project_id = ?) LIMIT 50",
+            (pid,),
+        )
+        p["todos"] = [dict(zip(["content", "status", "priority"], r)) for r in c.fetchall()]
+
+        projects.append(p)
+
+    conn.close()
+    return projects
+
+
+def read_opencode_todos(project_id: str, db_path: Path | None = None) -> list[dict[str, Any]]:
+    """读取指定项目关联的 todo 项"""
+    if db_path is None:
+        db_path = _opencode_db_path()
+    if not db_path or not db_path.exists():
+        return []
+
+    conn = sqlite3.connect(str(db_path))
+    c = conn.cursor()
+    c.execute(
+        """
+        SELECT t.content, t.status, t.priority, t.time_created, s.title AS session_title, s.directory
+        FROM todo t JOIN session s ON t.session_id = s.id
+        WHERE s.project_id = ?
+        ORDER BY t.time_created DESC
+    """,
+        (project_id,),
+    )
+    rows = c.fetchall()
+    conn.close()
+    return [dict(zip(["content", "status", "priority", "created", "session_title", "directory"], r)) for r in rows]
+
+
 def _read_messages_with_parts(cursor, session_id: str) -> list[dict]:
     messages = []
     for mrow in cursor.execute("SELECT * FROM message WHERE session_id = ? ORDER BY time_created", (session_id,)):
@@ -312,10 +374,17 @@ def _extract_cwd(meta_msg: dict | None) -> str | None:
 def opencode_to_codex(
     db_path: str | Path | None = None,
     session_id: str | None = None,
-    codex_sessions_dir: str | Path | None = None,
+    project_id: str | None = None,
+    codex_root: str | Path | None = None,
     dry_run: bool = False,
 ) -> list[dict]:
-    """将 OpenCode 会话导出为 Codex JSONL 格式"""
+    """将 OpenCode 会话导出为 Codex JSONL 格式。
+
+    Args:
+        session_id: 导出指定会话
+        project_id: 导出指定项目的全部会话
+        codex_root: Codex 根目录。None 则自动检测。
+    """
     if db_path is None:
         db_path = _opencode_db_path()
     if isinstance(db_path, str):
@@ -325,20 +394,25 @@ def opencode_to_codex(
 
     data = read_opencode_db(db_path)
     sessions = data.get("sessions", [])
+
     if session_id:
         sessions = [s for s in sessions if s["id"] == session_id]
+    elif project_id:
+        sessions = [s for s in sessions if s.get("project_id") == project_id]
+
     if not sessions:
         return [{"error": "没有找到会话", "count": 0}]
 
-    if codex_sessions_dir is None:
-        codex_sessions_dir = _codex_sessions_dir()
-    if codex_sessions_dir is None:
-        home = Path.home()
-        codex_sessions_dir = home / ".codex" / "sessions"
-    if isinstance(codex_sessions_dir, str):
-        codex_sessions_dir = Path(codex_sessions_dir)
+    if codex_root is None:
+        codex_root = _codex_root()
+    if codex_root is None:
+        codex_root = Path.home() / ".codex"
+    if isinstance(codex_root, str):
+        codex_root = Path(codex_root)
+    sessions_dir = Path(codex_root) / "sessions"
 
     results = []
+    index_entries = []
     for session in sessions:
         lines = _build_codex_jsonl_lines(session)
         if dry_run:
@@ -347,18 +421,109 @@ def opencode_to_codex(
             )
             continue
 
-        # 写入 Codex JSONL
         ts = datetime.fromtimestamp(session["time_created"] / 1000)
-        month_dir = codex_sessions_dir / str(ts.year) / f"{ts.month:02d}"
+        month_dir = sessions_dir / str(ts.year) / f"{ts.month:02d}"
         month_dir.mkdir(parents=True, exist_ok=True)
-        filename = f"rollout-{ts.strftime('%Y-%m-%d')}T{ts.strftime('%H-%M-%S')}-{session['id']}.jsonl"
+        filename = f"rollout-{ts.strftime('%Y-%m-%d')}T{ts.strftime('%H-%M-%S')}-{session['id'][:32]}.jsonl"
         filepath = month_dir / filename
         filepath.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
         results.append(
             {"session_id": session["id"], "title": session.get("title", ""), "lines": len(lines), "path": str(filepath)}
         )
+        index_entries.append(
+            json.dumps(
+                {
+                    "id": session["id"],
+                    "thread_name": session.get("title", ""),
+                    "updated_at": session.get("time_updated", session.get("time_created", "")),
+                },
+                ensure_ascii=False,
+            )
+        )
+
+    # 更新 session_index.jsonl
+    index_path = Path(codex_root) / "session_index.jsonl"
+    existing_ids = set()
+    if index_path.exists():
+        for line in index_path.read_text(encoding="utf-8", errors="replace").strip().split("\n"):
+            if line.strip():
+                with contextlib.suppress(json.JSONDecodeError):
+                    existing_ids.add(json.loads(line).get("id"))
+    new_entries = [e for e in index_entries if json.loads(e).get("id") not in existing_ids]
+    if new_entries and not dry_run:
+        with open(index_path, "a", encoding="utf-8") as f:
+            f.write("\n".join(new_entries) + "\n")
 
     return results
+
+
+def opencode_todos_to_memory(
+    project_id: str, db_path: Path | None = None, output_dir: Path | None = None
+) -> dict[str, Any]:
+    """将 OpenCode 项目的 todo 转换为 Codex memory Markdown 文件"""
+    todos = read_opencode_todos(project_id, db_path)
+    if not todos:
+        return {"ok": True, "files": 0, "message": "该项目没有 todo 项"}
+
+    if output_dir is None:
+        root = _codex_root()
+        output_dir = Path(root) / "memories" if root else Path.home() / ".codex" / "memories"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # 按 status 分组
+    pending = [t for t in todos if t["status"] == "pending"]
+    in_progress = [t for t in todos if t["status"] == "in_progress"]
+    completed = [t for t in todos if t["status"] == "completed"]
+
+    md = f"""# OpenCode Todo Import ({datetime.now().strftime("%Y-%m-%d")})
+
+## 🔴 待处理 ({len(pending)})
+"""
+    for t in pending:
+        md += f"- [{t.get('priority', '?')}] {t['content']}\n"
+
+    md += f"\n## 🟡 进行中 ({len(in_progress)})\n"
+    for t in in_progress:
+        md += f"- [{t.get('priority', '?')}] {t['content']}  *(来自: {t.get('session_title', '?')})*\n"
+
+    md += f"\n## 🟢 已完成 ({len(completed)})\n"
+    for t in completed[:20]:
+        md += f"- {t['content']}\n"
+    if len(completed) > 20:
+        md += f"- ...及另外 {len(completed) - 20} 项\n"
+
+    filepath = output_dir / f"opencode_todo_{project_id[:8]}.md"
+    filepath.write_text(md, encoding="utf-8")
+
+    return {
+        "ok": True,
+        "files": 1,
+        "path": str(filepath),
+        "pending": len(pending),
+        "in_progress": len(in_progress),
+        "completed": len(completed),
+    }
+
+
+def opencode_project_to_codex(project_id: str, db_path: Path | None = None) -> dict[str, Any]:
+    """完整导出 OpenCode 项目到 Codex（sessions + todos + session_index）"""
+    sessions_result = opencode_to_codex(project_id=project_id, db_path=db_path)
+    todo_result = opencode_todos_to_memory(project_id, db_path)
+
+    projects = read_opencode_projects(db_path)
+    project_info = next((p for p in projects if p["id"] == project_id), {})
+
+    return {
+        "ok": True,
+        "project_id": project_id,
+        "worktree": project_info.get("worktree", "?"),
+        "sessions_exported": len([s for s in sessions_result if s.get("path")]),
+        "todo_file": todo_result.get("path", "none"),
+        "todo_pending": todo_result.get("pending", 0),
+        "todo_in_progress": todo_result.get("in_progress", 0),
+        "sessions": sessions_result,
+    }
 
 
 def _build_codex_jsonl_lines(session: dict) -> list[str]:

@@ -633,6 +633,12 @@ class ModernApp(ctk.CTk):
             hover_color=self._darken_color(COLORS["success"]),
             command=lambda: self._bridge_action("o2c", "sessions"),
         ).pack(fill="x", padx=20, pady=6)
+
+        # 按项目导出
+        self.oc_project_frame = ctk.CTkFrame(o2c_card, fg_color="transparent")
+        self.oc_project_frame.pack(fill="x", padx=20, pady=6)
+        self._load_oc_projects()
+
         ctk.CTkButton(
             o2c_card,
             text="🔄 一键全部导出到 Codex",
@@ -649,7 +655,41 @@ class ModernApp(ctk.CTk):
         )
         self.bridge_status.pack(pady=10)
 
-    def _load_cx_checkboxes(self):
+    def _load_oc_projects(self):
+        """加载 OpenCode 项目列表（按项目导出）"""
+        for w in self.oc_project_frame.winfo_children():
+            w.destroy()
+        try:
+            from src.bridge import read_opencode_projects
+
+            projects = read_opencode_projects()
+            if not projects:
+                ctk.CTkLabel(self.oc_project_frame, text="没有检测到 OpenCode 项目", font=ctk.CTkFont(size=11)).pack(
+                    anchor="w"
+                )
+                return
+            ctk.CTkLabel(
+                self.oc_project_frame, text=f"按项目导出（{len(projects)} 个项目）：", font=ctk.CTkFont(size=11)
+            ).pack(anchor="w", pady=(0, 4))
+            for p in projects:
+                name = p.get("name") or p.get("worktree", "global")
+                if len(name) > 50:
+                    name = "..." + name[-47:]
+                sc = p.get("session_count", 0)
+                tc = p.get("todo_count", 0)
+                label = f"{name}  ({sc} 会话, {tc} todo)"
+                ctk.CTkButton(
+                    self.oc_project_frame,
+                    text=label,
+                    font=ctk.CTkFont(size=11),
+                    height=30,
+                    corner_radius=8,
+                    fg_color=COLORS["success"],
+                    hover_color=self._darken_color(COLORS["success"]),
+                    command=lambda pid=p["id"]: self._bridge_action("o2c", "project", pid),
+                ).pack(fill="x", pady=2)
+        except Exception as e:
+            ctk.CTkLabel(self.oc_project_frame, text=f"加载失败: {e}", font=ctk.CTkFont(size=11)).pack(anchor="w")
         """加载 Codex 会话复选框列表"""
         for w in self.cx_frame.winfo_children():
             w.destroy()
@@ -702,13 +742,18 @@ class ModernApp(ctk.CTk):
 
             messagebox.showinfo("提示", "请先勾选要导入的会话")
             return
-        self._bridge_action("c2o", "sessions", session_paths=selected)
+        self._bridge_action("c2o", "sessions")
 
-    def _bridge_action(self, direction, action, session_paths=None):
-        """执行跨工具同步操作"""
+    def _get_selected_session_paths(self):
+        """获取勾选的 Codex 会话路径"""
+        return [p for p, v in self.cx_vars.items() if v.get()]
+
+    def _bridge_action(self, direction, action, extra_id=None):
+        """执行跨工具同步操作。extra_id: project_id 或 None"""
         try:
             from src.bridge import (
                 codex_all_to_opencode,
+                opencode_project_to_codex,
                 opencode_to_codex,
                 sync_agents_md,
                 sync_memories_to_opencode,
@@ -726,7 +771,7 @@ class ModernApp(ctk.CTk):
                 elif action == "memories":
                     r = sync_memories_to_opencode()
                 elif action == "sessions":
-                    r = codex_all_to_opencode(session_paths=session_paths)
+                    r = codex_all_to_opencode(session_paths=self._get_selected_session_paths())
                 else:
                     r = {"error": "未知操作"}
             else:
@@ -735,6 +780,10 @@ class ModernApp(ctk.CTk):
                 elif action == "skills":
                     r = sync_skills("o2c")
                 elif action == "sessions":
+                    r = opencode_to_codex(project_id=extra_id)
+                elif action == "project":
+                    r = opencode_project_to_codex(extra_id or "global")
+                elif action == "all":
                     r = opencode_to_codex()
                 else:
                     r = {"error": "未知操作"}
@@ -742,10 +791,7 @@ class ModernApp(ctk.CTk):
             import json
 
             r_text = json.dumps(r, ensure_ascii=False, indent=2)
-            self.bridge_status.configure(
-                text=f"✅ 完成\n{r_text[:500]}",
-                text_color=COLORS["success"],
-            )
+            self.bridge_status.configure(text=f"✅ 完成\n{r_text[:500]}", text_color=COLORS["success"])
         except Exception as e:
             self.bridge_status.configure(text=f"❌ 失败: {e}", text_color=COLORS["danger"])
 
