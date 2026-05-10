@@ -1,20 +1,43 @@
 # 🧠 Codex Memory Sync
 
-> **AI 的记忆不该被困在一台机器里。跨设备、跨工具、跨平台——让你的 AI 认知资产自由流动。**
+> **Codex ↔ OpenCode 双向记忆移植基础设施。把 AI 对你的项目认知，像 Git 一样推送到任何地方。**
 
-Codex Memory Sync 是全球首个支持 **Codex ↔ OpenCode 双向记忆移植** 的开源基础设施。它不仅解决了 Codex 用户在多台设备间同步记忆和上下文的刚需，更首次打通了 Codex 与 OpenCode 之间的认知壁垒——你在 Codex 里花数周积累的项目理解、架构决策、会话上下文，可以一键注入 OpenCode，反过来一样。**告别每换一个工具就从头教 AI 的时代。**
+Codex Memory Sync 是全球首个打通 **Codex 和 OpenCode 认知壁垒** 的开源工具。它不仅能在多台设备间同步记忆和上下文，更实现了两大 AI 编程助手之间的**完整对话记录移植**——Codex 的会话可以一键注入 OpenCode，OpenCode 的每个工作目录可以一键导出为 Codex 可读的完整对话。
+
+**强烈推荐使用网页端**，功能最全、体验最好、无需安装任何桌面环境。
 
 ---
 
-## 💡 为什么你需要它
+## 🚀 快速开始
 
-AI 编程助手的核心瓶颈不是模型能力，而是 **上下文断裂**。你在台式机上花了三周让 Codex 理解你的项目架构，换到笔记本上它就变成了一个从零开始的实习生。你切换到 OpenCode 想试试新体验，之前积累的全部对话历史和规则瞬间归零。
+```bash
+# 一键启动 Web 控制台（推荐）
+cd codex-memory-sync
+pip install -e .
+python web_server.py
+# → 浏览器打开 http://127.0.0.1:8899
+```
 
-Codex Memory Sync 用三层能力彻底解决这个问题：
+**Web 端功能一览：**
+- 📊 仪表盘 — Codex + OpenCode 数据概览
+- 💻 本地文件 — Codex 文件树浏览 + 聊天时间线预览
+- 💬 会话浏览 — Codex JSONL + OpenCode 按工作目录分组的全量会话
+- 🔄 跨工具 — 复选框选择性导入导出（Codex ↔ OpenCode）
+- 📦 导出 — ZIP 压缩包（可选 AES-256 密码）
+- 🌙 暗色/亮色主题一键切换
 
-1. **设备间同步** — 加密记忆包在多台电脑间自动流转
-2. **工具间移植** — Codex ↔ OpenCode 双向导入，AGENTS.md、Skills、会话记录一行命令带走  
-3. **离线容灾** — 导出加密 ZIP，U 盘拷贝即用，不依赖任何云服务
+---
+
+## ✨ 为什么选择 Web 端
+
+| 对比 | 桌面 GUI | Web 端 |
+|------|----------|--------|
+| 安装依赖 | 需要 tkinter + CustomTkinter | 仅需 `pip install -e .` |
+| 远程访问 | 不支持 | 局域网/内网穿透即可 |
+| OpenCode 浏览 | 基础项目树 | 按工作目录分组 + 完整聊天预览 |
+| 跨工具导入 | 批量操作 | 逐条勾选 + 进度反馈 |
+| 更新 | 需重新打包 | 刷新浏览器即可 |
+| 外观 | 单主题 | 暗色/亮色实时切换 |
 
 ---
 
@@ -23,36 +46,31 @@ Codex Memory Sync 用三层能力彻底解决这个问题：
 | 特性 | 说明 |
 |------|------|
 | 🧠 **记忆同步** | 项目规范、架构决策、命名偏好，一次配置全设备共享 |
-| 💬 **会话搬运** | 完整对话记录+思考链路，`.jsonl` ↔ SQLite 双向转换 |
+| 💬 **全量会话搬运** | Codex `.jsonl` ↔ OpenCode `SQLite`，完整对话+思考链路双向转换 |
 | 🔄 **跨工具桥接** | Codex ↔ OpenCode：AGENTS.md、Skills、Memories、Sessions 一键移植 |
+| 📂 **按工作目录组织** | OpenCode 会话按 `D:\projects\foo`、`D:\projects\bar` 等目录清晰分组 |
 | 🔒 **端到端加密** | AES-256-GCM，密钥从不出设备；导出 ZIP 可选密码保护 |
-| 📂 **本地优先** | 无需任何云后端即可完整使用，导出 `.zip` / `.codex` 离线带走 |
-| 🎨 **双界面** | CustomTkinter 桌面 GUI + FastAPI Web Dashboard，亮色/暗色主题 |
-| 💬 **聊天时间线** | `.jsonl` 会话渲染为可视气泡：用户/助手/思考/工具六类区分 |
-| 🤖 **守护进程** | 后台监听文件变化，自动推送/拉取，无需人工干预 |
-| 📦 **桌面 + Web + CLI** | GUI、浏览器、命令行三种交互方式任意切换 |
+| 📂 **本地优先** | 无需任何云后端，导出 `.zip` / `.codex` 离线带走 |
+| 🎨 **三界面** | Web Dashboard（推荐） + 桌面 GUI + CLI 命令行 |
+| 💬 **聊天时间线** | `.jsonl` + OpenCode 会话 → 可视气泡：用户/助手/思考/工具六类区分 |
 
 ---
 
-## 📦 快速开始
+## 📦 CLI 快速命令
 
 ```bash
-# 安装
-pip install -e .
+# Codex → OpenCode（勾选会话导入）
+codex-memory bridge c2o --all
 
-# 桌面 GUI（最完整）
-start_gui.bat        # Windows
-./start_gui.sh       # macOS / Linux
+# OpenCode → Codex（按项目完整导出，含 session_index）
+codex-memory bridge o2c --all
 
-# Web 控制台
-start_web.bat        # 浏览器访问 http://127.0.0.1:8899
-./start_web.sh       # macOS / Linux
+# 本地 ZIP 导出
+codex-memory export
 
-# CLI 命令行
-codex-memory status               # 查看状态
-codex-memory export               # 导出 ZIP
-codex-memory bridge c2o --all     # Codex → OpenCode 一键导入
-codex-memory bridge o2c --all     # OpenCode → Codex 一键导出
+# 查看状态
+codex-memory status
+codex-memory bridge list
 ```
 
 ---
@@ -60,41 +78,22 @@ codex-memory bridge o2c --all     # OpenCode → Codex 一键导出
 ## 🏗️ 架构
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  交互层                                                  │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │ 桌面 GUI      │  │  Web 控制台   │  │  CLI 命令行   │  │
-│  │ CustomTkinter │  │ FastAPI+HTML │  │ Click        │  │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  │
-├─────────┼─────────────────┼─────────────────┼───────────┤
-│  业务层  │                 │                 │           │
-│  ┌──────┴─────────────────┴─────────────────┴───────┐   │
-│  │ chat_parser  │ bridge    │ exporter  │ daemon   │   │
-│  │ JSONL→气泡   │ CX↔OC    │ AES-GCM   │ watchdog │   │
-│  └──────────────────────────────────────────────────┘   │
-├─────────────────────────────────────────────────────────┤
-│  存储层                                                  │
-│  ┌─────────┐  ┌───────────┐  ┌──────────────────────┐  │
-│  │ Codex   │  │ OpenCode  │  │ 云后端 (GitHub/MBaOut)│  │
-│  │ JSONL   │  │ SQLite    │  │ NoopBackend (本地)    │  │
-│  └─────────┘  └───────────┘  └──────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-```
-
----
-
-## 🔄 跨工具桥接
-
-```
-Codex (~/.codex/)                    OpenCode (opencode.db)
-┌──────────────────┐                ┌──────────────────────┐
-│ AGENTS.md        │ ←── 双向 ──→ │ ~/.config/opencode/   │
-│ skills/          │ ←── 目录 ──→ │ AGENTS.md             │
-│ sessions/YYYY/MM │ ←── JSONL ──→│ skills/               │
-│   *.jsonl        │     ↕         │ session + message     │
-│ memories/*.md    │ ── 追加 ──→  │   + part 表           │
-│ session_index    │     SQLite    │                       │
-└──────────────────┘                └──────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│  🌐 Web Dashboard (FastAPI + HTML5)  ← 推荐入口          │
+│  🖥️ 桌面 GUI (CustomTkinter)                              │
+│  ⌨️ CLI (Click)                                          │
+├──────────────────────────────────────────────────────────┤
+│  src/chat_parser.py  — Codex .jsonl → 结构化消息          │
+│  src/bridge.py       — Codex ↔ OpenCode SQLite 双向引擎   │
+│  src/path_detector.py — 跨设备自动检测 .codex 目录        │
+│  src/exporter.py     — AES-256-GCM 加密打包               │
+│  src/daemon.py       — 后台文件监听 + 自动同步             │
+├──────────────────────────────────────────────────────────┤
+│  Codex (~/.codex/)        OpenCode (opencode.db)          │
+│  └─ sessions/YYYY/MM/*.jsonl   └─ session/message/part   │
+│     memories/*.md                  project/todo           │
+│     rules/                         per-directory grouped  │
+└──────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -104,9 +103,7 @@ Codex (~/.codex/)                    OpenCode (opencode.db)
 - **加密算法**：AES-256-GCM，每包独立随机 Salt（16B）+ Nonce（12B）
 - **密钥派生**：PBKDF2-HMAC-SHA256，600,000 迭代
 - **包格式**：`[1B version][16B salt][12B nonce][ciphertext]`
-- **传输安全**：云后端只存储无法解析的二进制 blob
-
-> ⚠️ 加密密码本地明文存储在 `~/.codex-memory-sync/config.json`（守护进程需无人值守）。未来将集成系统密钥链。
+- **导入保护**：操作 OpenCode SQLite 前自动备份 → `.db.bak`
 
 ---
 
@@ -117,8 +114,6 @@ ruff check   # 零错误
 ruff format  # 全量格式化
 pyright      # 严格类型检查，零错误零警告
 ```
-
-GitHub Actions CI 自动在 Python 3.11 / 3.12 上验证每次提交。
 
 ---
 
