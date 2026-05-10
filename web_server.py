@@ -215,14 +215,10 @@ def api_bridge_c2o(data: dict[str, Any]):
     if action == "memories":
         return sync_memories_to_opencode()
     if action == "sessions":
-        return codex_all_to_opencode()
+        paths = data.get("session_paths")
+        return codex_all_to_opencode(session_paths=paths)
     if action == "all":
-        return {
-            "agents": sync_agents_md("c2o"),
-            "skills": sync_skills("c2o"),
-            "memories": sync_memories_to_opencode(),
-            "sessions": codex_all_to_opencode(),
-        }
+        return codex_all_to_opencode()
     return {"error": "未知操作"}
 
 

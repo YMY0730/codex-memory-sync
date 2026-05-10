@@ -562,7 +562,7 @@ class ModernApp(ctk.CTk):
         self._refresh_cloud_versions()
 
     def _build_bridge_tab(self):
-        """跨工具同步标签页 — Codex ↔ OpenCode"""
+        """跨工具同步标签页 — Codex ↔ OpenCode（含复选框选择）"""
         container = ctk.CTkScrollableFrame(self.tab_bridge, fg_color="transparent")
         container.pack(fill="both", expand=True, padx=10, pady=10)
 
@@ -571,33 +571,34 @@ class ModernApp(ctk.CTk):
         c2o_card.pack(fill="x", pady=8)
 
         ctk.CTkLabel(c2o_card, text="🧠 Codex → OpenCode", font=ctk.CTkFont(size=16, weight="bold")).pack(
-            anchor="w", padx=20, pady=(20, 8)
+            anchor="w", padx=20, pady=(20, 4)
         )
 
         c2o_btns = ctk.CTkFrame(c2o_card, fg_color="transparent")
-        c2o_btns.pack(fill="x", padx=20, pady=10)
-
-        for label, action in [
-            ("📄 同步 AGENTS.md", "agents"),
-            ("📁 同步 Skills", "skills"),
-            ("🧠 记忆 → AGENTS.md", "memories"),
-        ]:
+        c2o_btns.pack(fill="x", padx=20, pady=6)
+        for label, action in [("📄 AGENTS.md", "agents"), ("📁 Skills", "skills"), ("🧠 记忆→AGENTS.md", "memories")]:
             ctk.CTkButton(
                 c2o_btns,
                 text=label,
-                font=ctk.CTkFont(size=12),
-                height=34,
+                font=ctk.CTkFont(size=11),
+                height=30,
                 corner_radius=8,
                 command=lambda a=action: self._bridge_action("c2o", a),
             ).pack(side="left", padx=3)
 
+        # 会话复选框列表
+        self.cx_vars: dict[str, ctk.BooleanVar] = {}
+        self.cx_frame = ctk.CTkFrame(c2o_card, fg_color="transparent")
+        self.cx_frame.pack(fill="x", padx=20, pady=6)
+        self._load_cx_checkboxes()
+
         ctk.CTkButton(
             c2o_card,
-            text="📤 导入全部会话到 OpenCode",
+            text="📤 导入勾选会话到 OpenCode",
             font=ctk.CTkFont(size=13, weight="bold"),
             height=42,
             corner_radius=10,
-            command=lambda: self._bridge_action("c2o", "sessions"),
+            command=lambda: self._bridge_import_selected(),
         ).pack(fill="x", padx=20, pady=10)
 
         # === OpenCode → Codex ===
@@ -605,18 +606,17 @@ class ModernApp(ctk.CTk):
         o2c_card.pack(fill="x", pady=8)
 
         ctk.CTkLabel(o2c_card, text="💬 OpenCode → Codex", font=ctk.CTkFont(size=16, weight="bold")).pack(
-            anchor="w", padx=20, pady=(20, 8)
+            anchor="w", padx=20, pady=(20, 4)
         )
 
         o2c_btns = ctk.CTkFrame(o2c_card, fg_color="transparent")
-        o2c_btns.pack(fill="x", padx=20, pady=10)
-
-        for label, action in [("📄 AGENTS.md → Codex", "agents"), ("📁 Skills → Codex", "skills")]:
+        o2c_btns.pack(fill="x", padx=20, pady=6)
+        for label, action in [("📄 AGENTS.md", "agents"), ("📁 Skills", "skills")]:
             ctk.CTkButton(
                 o2c_btns,
                 text=label,
-                font=ctk.CTkFont(size=12),
-                height=34,
+                font=ctk.CTkFont(size=11),
+                height=30,
                 corner_radius=8,
                 fg_color=COLORS["success"],
                 hover_color=self._darken_color(COLORS["success"]),
@@ -632,8 +632,7 @@ class ModernApp(ctk.CTk):
             fg_color=COLORS["success"],
             hover_color=self._darken_color(COLORS["success"]),
             command=lambda: self._bridge_action("o2c", "sessions"),
-        ).pack(fill="x", padx=20, pady=10)
-
+        ).pack(fill="x", padx=20, pady=6)
         ctk.CTkButton(
             o2c_card,
             text="🔄 一键全部导出到 Codex",
@@ -645,13 +644,67 @@ class ModernApp(ctk.CTk):
             command=lambda: self._bridge_action("o2c", "all"),
         ).pack(fill="x", padx=20, pady=(0, 20))
 
-        # 状态区域
         self.bridge_status = ctk.CTkLabel(
             container, text="", font=ctk.CTkFont(size=12), text_color=(COLORS["gray_400"], COLORS["gray_500"])
         )
         self.bridge_status.pack(pady=10)
 
-    def _bridge_action(self, direction, action):
+    def _load_cx_checkboxes(self):
+        """加载 Codex 会话复选框列表"""
+        for w in self.cx_frame.winfo_children():
+            w.destroy()
+        self.cx_vars.clear()
+
+        try:
+            from pathlib import Path
+
+            from src.export_local import discover_sessions
+
+            sessions_dir = Path.home() / ".codex" / "sessions"
+            idx_path = Path.home() / ".codex" / "session_index.jsonl"
+            if not sessions_dir.exists():
+                ctk.CTkLabel(self.cx_frame, text="未找到 Codex sessions 目录", font=ctk.CTkFont(size=11)).pack(
+                    anchor="w"
+                )
+                return
+            indexed, unindexed = discover_sessions(sessions_dir, idx_path)
+            all_sessions = indexed + [
+                {"path": p, "name": f"未索引:{p.name}", "thread_name": f"未索引:{p.name}", "size": p.stat().st_size}
+                for p in unindexed
+            ]
+
+            if not all_sessions:
+                ctk.CTkLabel(self.cx_frame, text="没有可导入的会话", font=ctk.CTkFont(size=11)).pack(anchor="w")
+                return
+
+            ctk.CTkLabel(
+                self.cx_frame, text=f"共 {len(all_sessions)} 个会话（勾选要导入的）", font=ctk.CTkFont(size=11)
+            ).pack(anchor="w", pady=(0, 6))
+
+            for s in all_sessions:
+                name = s.get("thread_name", s["name"])
+                size_str = format_size(s.get("size", 0))
+                path_str = str(s["path"])
+                var = ctk.BooleanVar(value=False)
+                self.cx_vars[path_str] = var
+                cb = ctk.CTkCheckBox(
+                    self.cx_frame, text=f"{name} ({size_str})", variable=var, font=ctk.CTkFont(size=11)
+                )
+                cb.pack(anchor="w", padx=5, pady=2)
+        except Exception as e:
+            ctk.CTkLabel(self.cx_frame, text=f"加载失败: {e}", font=ctk.CTkFont(size=11)).pack(anchor="w")
+
+    def _bridge_import_selected(self):
+        """导入勾选的 Codex 会话到 OpenCode"""
+        selected = [p for p, v in self.cx_vars.items() if v.get()]
+        if not selected:
+            from tkinter import messagebox
+
+            messagebox.showinfo("提示", "请先勾选要导入的会话")
+            return
+        self._bridge_action("c2o", "sessions", session_paths=selected)
+
+    def _bridge_action(self, direction, action, session_paths=None):
         """执行跨工具同步操作"""
         try:
             from src.bridge import (
@@ -673,7 +726,7 @@ class ModernApp(ctk.CTk):
                 elif action == "memories":
                     r = sync_memories_to_opencode()
                 elif action == "sessions":
-                    r = codex_all_to_opencode()
+                    r = codex_all_to_opencode(session_paths=session_paths)
                 else:
                     r = {"error": "未知操作"}
             else:

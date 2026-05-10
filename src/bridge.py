@@ -140,7 +140,14 @@ def _read_messages_with_parts(cursor, session_id: str) -> list[dict]:
 
 
 def codex_to_opencode(codex_session_path: Path, opencode_db_path: Path, title: str = "") -> dict[str, Any]:
-    """将单条 Codex 会话 JSONL 导入 OpenCode SQLite"""
+    """将单条 Codex 会话 JSONL 导入 OpenCode SQLite
+
+    安全措施:
+      - 导入前自动备份 opencode.db → opencode.db.bak
+      - 事务包裹，失败自动回滚
+      - INSERT 后 SELECT 验证数据落盘
+      - 补齐 session 表所有必填列，避免被 OpenCode 清理
+    """
     from .chat_parser import parse_jsonl_session
 
     if not opencode_db_path.exists():
@@ -157,62 +164,89 @@ def codex_to_opencode(codex_session_path: Path, opencode_db_path: Path, title: s
     if not title:
         title = f"Codex Import - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
 
+    # 备份数据库
+    bak_path = opencode_db_path.with_suffix(".db.bak")
+    try:
+        shutil.copy2(str(opencode_db_path), str(bak_path))
+    except Exception as e:
+        return {"error": f"备份 opencode.db 失败: {e}"}
+
     conn = sqlite3.connect(str(opencode_db_path))
-    c = conn.cursor()
-    session_id = f"ses_{uuid.uuid4().hex[:24]}"
-    now = int(time.time() * 1000)
-    directory = _extract_cwd(meta_text) or str(Path.home())
+    try:
+        c = conn.cursor()
+        session_id = f"cx_{uuid.uuid4().hex[:22]}"
+        now = int(time.time() * 1000)
+        directory = _extract_cwd(meta_text) or str(Path.home())
 
-    # 创建 session
-    c.execute(
-        "INSERT INTO session (id, project_id, title, directory, time_created, time_updated, slug, version) "
-        "VALUES (?,?,?,?,?,?,?,?)",
-        (session_id, "global", title, directory, now, now, f"codex-import-{now}", "imported"),
-    )
-
-    # 插入消息和 parts
-    msg_count = 0
-    for msg in messages:
-        if msg["kind"] not in ("message", "thinking", "tool"):
-            continue
-
-        msg_id = f"msg_{uuid.uuid4().hex[:24]}"
-        role = msg.get("role", "assistant")
-        text = msg.get("text", "")
-
-        # message 行
-        msg_data = json.dumps({"role": role}, ensure_ascii=False)
+        # 补齐 session 表全部列，避免 OpenCode 清理
+        c.execute("BEGIN")
         c.execute(
-            "INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?,?,?,?,?)",
-            (msg_id, session_id, now + msg_count, now + msg_count, msg_data),
+            "INSERT INTO session"
+            " (id, project_id, parent_id, slug, directory, title, version,"
+            "  summary_additions, summary_deletions, summary_files, summary_diffs,"
+            "  time_created, time_updated, time_compacting, time_archived,"
+            "  workspace_id, path, agent, model)"
+            " VALUES (?,?,NULL,?,?,?,?,0,0,0,NULL,?,?,NULL,NULL,NULL,NULL,NULL,NULL)",
+            (session_id, "global", f"codex-import-{now}", directory, title, "imported", now, now),
         )
 
-        # part 行
-        part_type = "text"
-        if msg["kind"] == "thinking":
-            part_type = "reasoning"
-        elif msg["kind"] == "tool":
-            part_type = "tool"
+        # 插入消息和 parts
+        msg_count = 0
+        for msg in messages:
+            if msg["kind"] not in ("message", "thinking", "tool"):
+                continue
 
-        part_id = f"prt_{uuid.uuid4().hex[:24]}"
-        part_data = json.dumps({"type": part_type, "text": text}, ensure_ascii=False)
-        c.execute(
-            "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?,?,?,?,?,?)",
-            (part_id, msg_id, session_id, now + msg_count, now + msg_count, part_data),
-        )
-        msg_count += 1
+            msg_id = f"mg_{uuid.uuid4().hex[:22]}"
+            role = msg.get("role", "assistant")
+            text = msg.get("text", "")
 
-    conn.commit()
-    conn.close()
-    return {"ok": True, "session_id": session_id, "message_count": msg_count, "title": title}
+            msg_data = json.dumps({"role": role}, ensure_ascii=False)
+            c.execute(
+                "INSERT INTO message (id, session_id, time_created, time_updated, data) VALUES (?,?,?,?,?)",
+                (msg_id, session_id, now + msg_count, now + msg_count, msg_data),
+            )
+
+            part_type = "text"
+            if msg["kind"] == "thinking":
+                part_type = "reasoning"
+            elif msg["kind"] == "tool":
+                part_type = "tool"
+
+            part_id = f"pt_{uuid.uuid4().hex[:22]}"
+            part_data = json.dumps({"type": part_type, "text": text}, ensure_ascii=False)
+            c.execute(
+                "INSERT INTO part (id, message_id, session_id, time_created, time_updated, data) VALUES (?,?,?,?,?,?)",
+                (part_id, msg_id, session_id, now + msg_count, now + msg_count, part_data),
+            )
+            msg_count += 1
+
+        c.execute("COMMIT")
+
+        # 验证落盘
+        c.execute("SELECT COUNT(*) FROM session WHERE id = ?", (session_id,))
+        if c.fetchone()[0] == 0:
+            return {"error": "session INSERT 未生效", "ok": False}
+
+        return {"ok": True, "session_id": session_id, "message_count": msg_count, "title": title}
+    except Exception as e:
+        with contextlib.suppress(Exception):
+            c.execute("ROLLBACK")
+        return {"error": f"导入失败: {e}", "ok": False}
+    finally:
+        conn.close()
 
 
 def codex_all_to_opencode(
     opencode_db_path: str | Path | None = None,
     sessions_dir: str | Path | None = None,
+    session_paths: list[str] | None = None,
     dry_run: bool = False,
 ) -> list[dict]:
-    """批量导入：Codex 所有已索引会话 → OpenCode"""
+    """批量导入：Codex 会话 → OpenCode
+
+    Args:
+        session_paths: 可选，指定要导入的会话文件路径列表。为 None 时导入全部已索引会话。
+    """
     from .export_local import discover_sessions
 
     if opencode_db_path is None:
@@ -232,12 +266,29 @@ def codex_all_to_opencode(
     index_path = sessions_dir.parent / "session_index.jsonl"
     indexed, unindexed = discover_sessions(sessions_dir, index_path)
 
-    results = []
-    for s in indexed:
-        thread_name = s.get("thread_name", s["name"])
-        r = codex_to_opencode(s["path"], opencode_db_path, title=thread_name if not dry_run else thread_name)
-        results.append(r)
+    # 如果指定了路径，只导入匹配的
+    all_sessions: list[dict] = indexed + [
+        {"path": p, "name": f"未索引:{p.name}", "thread_name": f"未索引:{p.name}", "size": p.stat().st_size}
+        for p in unindexed
+    ]  # type: ignore[assignment]
 
+    if session_paths:
+        targets = {str(Path(sp)) for sp in session_paths}
+        all_sessions = [s for s in all_sessions if str(s["path"]) in targets]
+
+    results = []
+    ok_count = 0
+    for s in all_sessions:
+        if dry_run:
+            results.append({"path": str(s["path"]), "name": s.get("thread_name", s["name"]), "dry_run": True})
+            continue
+        thread_name = s.get("thread_name", s["name"])
+        r = codex_to_opencode(s["path"], opencode_db_path, title=thread_name)
+        results.append(r)
+        if r.get("ok"):
+            ok_count += 1
+
+    results.insert(0, {"summary": {"total": len(all_sessions), "ok": ok_count, "fail": len(all_sessions) - ok_count}})
     return results
 
 
