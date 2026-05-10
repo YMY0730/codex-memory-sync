@@ -1319,14 +1319,14 @@ class ModernApp(ctk.CTk):
             summary.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
             ctk.CTkLabel(
                 summary,
-                text=f"💬 {title}  ·  {len(messages)} 条消息  ·  {session_info.get('directory', '?')}",
+                text=f"💬 {title}  ·  显示 {min(len(messages), 50)}/{len(messages)} 条消息  ·  {session_info.get('directory', '?')}",
                 font=ctk.CTkFont(size=11),
                 text_color=(COLORS["gray_500"], COLORS["gray_400"]),
             ).pack(padx=15, pady=10)
 
-            # 聊天时间线
+            # 聊天时间线（限制 50 条，避免大量 widget 导致卡顿）
             chat_msgs = []
-            for m in messages:
+            for m in messages[:50]:
                 md = m.get("data", {})
                 role = md.get("role", "assistant") if isinstance(md, dict) else "assistant"
                 for p in m.get("parts", []):

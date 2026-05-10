@@ -204,7 +204,7 @@ function loadSessions(){
  var p1=api('/api/codex/sessions').catch(function(){return{indexed:[],unindexed:[]}});
  var p2=api('/api/opencode/directories').catch(function(){return[]});
  Promise.all([p1,p2]).then(function(r){
-  var cx=r[0],ocP=r[1];
+  var cx=r[0],ocD=r[1];
   var allCx=(cx.indexed||[]).concat(cx.unindexed||[]);
   var L='<div class="file-list">';
   L+='<div style="font-weight:700;font-size:11px;color:var(--text2);padding:6px 4px;border-top:1px solid var(--border)">🧠 Codex ('+allCx.length+')</div>';
@@ -232,7 +232,7 @@ function previewSession(el){
 // === Bridge ===
 function loadBridge(){
  var p1=api('/api/codex/sessions').catch(function(){return{indexed:[],unindexed:[]}});
- var p2=api('/api/opencode/directories').catch(function(){return[]});
+ var p2=api('/api/opencode/sessions').catch(function(){return[]});
  Promise.all([p1,p2]).then(function(r){
   var cx=r[0],oc=r[1];
   var allCx=(cx.indexed||[]).concat(cx.unindexed||[]);
