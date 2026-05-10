@@ -15,7 +15,9 @@ from src.bridge import (
     opencode_to_codex,
     opencode_todos_to_memory,
     read_opencode_db,
+    read_opencode_project_sessions,
     read_opencode_projects,
+    read_opencode_session_messages,
     sync_agents_md,
     sync_memories_to_opencode,
     sync_skills,
@@ -159,32 +161,16 @@ def api_opencode_projects():
     return read_opencode_projects()
 
 
+@app.get("/api/opencode/project/{project_id}/sessions")
+def api_opencode_project_sessions(project_id: str):
+    """指定项目的会话列表（含消息数 + 摘要）"""
+    return read_opencode_project_sessions(project_id)
+
+
 @app.get("/api/opencode/session/{session_id}")
 def api_opencode_session_detail(session_id: str):
-    data = read_opencode_db()
-    for s in data.get("sessions", []):
-        if s["id"] == session_id:
-            messages = []
-            for msg in s.get("messages", []):
-                md = msg.get("data", {}) if isinstance(msg.get("data"), dict) else {}
-                role = md.get("role", "assistant") if isinstance(md, dict) else "assistant"
-                parts = []
-                for p in msg.get("parts", []):
-                    pd = p.get("data", {}) if isinstance(p.get("data"), dict) else {}
-                    parts.append(
-                        {
-                            "type": pd.get("type", "text") if isinstance(pd, dict) else "text",
-                            "text": pd.get("text", "") if isinstance(pd, dict) else str(pd),
-                        }
-                    )
-                messages.append({"role": role, "parts": parts, "time": msg.get("time_created")})
-            return {
-                "id": s["id"],
-                "title": s.get("title", ""),
-                "directory": s.get("directory", ""),
-                "messages": messages,
-            }
-    raise HTTPException(404, "会话未找到")
+    """单条会话完整消息（高效直接查询，不加载全库）"""
+    return read_opencode_session_messages(session_id)
 
 
 @app.get("/api/codex/sessions")

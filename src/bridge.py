@@ -164,6 +164,92 @@ def read_opencode_projects(db_path: Path | None = None) -> list[dict[str, Any]]:
     return projects
 
 
+def read_opencode_session_messages(session_id: str, db_path: Path | None = None) -> dict[str, Any]:
+    """高效读取单个 OpenCode session 的完整消息（含 parts）"""
+    if db_path is None:
+        db_path = _opencode_db_path()
+    if not db_path or not db_path.exists():
+        return {"error": "opencode.db 未找到"}
+
+    conn = sqlite3.connect(str(db_path))
+    c = conn.cursor()
+    # session 信息
+    c.execute(
+        "SELECT id, title, directory, time_created, time_updated, project_id FROM session WHERE id = ?", (session_id,)
+    )
+    srow = c.fetchone()
+    if not srow:
+        conn.close()
+        return {"error": "会话未找到"}
+    session = dict(zip(["id", "title", "directory", "created", "updated", "project_id"], srow))
+
+    # messages + parts
+    c.execute("SELECT id, time_created, data FROM message WHERE session_id = ? ORDER BY time_created", (session_id,))
+    messages = []
+    for mrow in c.fetchall():
+        msg = dict(zip(["id", "time", "data_raw"], mrow))
+        try:
+            msg["data"] = json.loads(msg["data_raw"]) if isinstance(msg["data_raw"], str) else msg["data_raw"]
+        except json.JSONDecodeError:
+            msg["data"] = {}
+        c2 = conn.cursor()
+        c2.execute("SELECT id, time_created, data FROM part WHERE message_id = ? ORDER BY time_created", (msg["id"],))
+        parts = []
+        for prow in c2.fetchall():
+            p = dict(zip(["id", "time", "data_raw"], prow))
+            try:
+                p["data"] = json.loads(p["data_raw"]) if isinstance(p["data_raw"], str) else p["data_raw"]
+            except json.JSONDecodeError:
+                p["data"] = {}
+            parts.append(p)
+        msg["parts"] = parts
+        messages.append(msg)
+
+    conn.close()
+    return {"ok": True, "session": session, "messages": messages, "message_count": len(messages)}
+
+
+def read_opencode_project_sessions(project_id: str, db_path: Path | None = None) -> list[dict[str, Any]]:
+    """读取项目下的会话列表，含摘要（首条用户消息前 100 字）"""
+    if db_path is None:
+        db_path = _opencode_db_path()
+    if not db_path or not db_path.exists():
+        return []
+
+    conn = sqlite3.connect(str(db_path))
+    c = conn.cursor()
+    c.execute(
+        "SELECT s.id, s.title, s.directory, s.time_created, s.time_updated, "
+        "  (SELECT COUNT(*) FROM message WHERE session_id = s.id) AS msg_count"
+        " FROM session s WHERE s.project_id = ? ORDER BY s.time_created DESC",
+        (project_id,),
+    )
+    rows = c.fetchall()
+    sessions = []
+    c2 = conn.cursor()
+    for r in rows:
+        s = dict(zip(["id", "title", "directory", "created", "updated", "message_count"], r))
+        # 取首条 user message 的 part text 作为摘要
+        c2.execute(
+            "SELECT p.data FROM part p JOIN message m ON p.message_id = m.id "
+            "WHERE m.session_id = ? AND json_extract(m.data, '$.role') = 'user' "
+            "ORDER BY m.time_created LIMIT 1",
+            (s["id"],),
+        )
+        prow = c2.fetchone()
+        if prow:
+            try:
+                pd = json.loads(prow[0])
+                s["preview"] = pd.get("text", "")[:100]
+            except (json.JSONDecodeError, TypeError):
+                s["preview"] = str(prow[0])[:100]
+        else:
+            s["preview"] = ""
+        sessions.append(s)
+    conn.close()
+    return sessions
+
+
 def read_opencode_todos(project_id: str, db_path: Path | None = None) -> list[dict[str, Any]]:
     """读取指定项目关联的 todo 项"""
     if db_path is None:
