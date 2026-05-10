@@ -176,8 +176,14 @@ function doPreview(el){
  if(!path){area.innerHTML='<div class="empty"><div class="big">📁</div>目录</div>';return}
  area.innerHTML='<div class="empty"><div class="big">⏳</div></div>';
  api('/api/preview?path='+encodeURIComponent(path)).then(function(d){
-  area.innerHTML=d.type==='chat'?renderChat(d.messages):'<div style="font-size:10px;color:var(--text2);margin-bottom:6px">📄 '+esc(d.name)+' · '+(d.size||'')+'</div><pre class="code">'+esc(d.content||'')+'</pre>';
+  var btns='<button class="btn btn-primary" onclick="exportSingleFile(\''+jesc(path)+'\')" style="margin-bottom:8px;font-size:11px">📦 单独导出此文件</button>';
+  area.innerHTML=btns+(d.type==='chat'?renderChat(d.messages):'<div style="font-size:10px;color:var(--text2);margin-bottom:6px">📄 '+esc(d.name)+' · '+(d.size||'')+'</div><pre class="code">'+esc(d.content||'')+'</pre>');
  }).catch(function(e){area.innerHTML='<div class="empty"><div class="big">❌</div>'+esc(e.message)+'</div>'});
+}
+function exportSingleFile(path){
+ api('/api/export/file',{method:'POST',body:JSON.stringify({path:path})}).then(function(r){
+  showToast(r.ok?'已导出: '+r.path:'失败: '+r.error,!r.ok);
+ });
 }
 
 // Chat renderer
@@ -226,7 +232,15 @@ function loadSessions(){
 function previewSession(el){
  var path=el.getAttribute('data-path')||'',area=document.getElementById('spv');if(!path||!area)return;
  area.innerHTML='<div class="empty"><div class="big">⏳</div></div>';
- api('/api/preview?path='+encodeURIComponent(path)).then(function(d){area.innerHTML=d.type==='chat'?renderChat(d.messages):'<pre class="code">'+esc(d.content||'')+'</pre>';}).catch(function(e){area.innerHTML='<div class="empty"><div class="big">❌</div>'+esc(e.message)+'</div>'});
+ api('/api/preview?path='+encodeURIComponent(path)).then(function(d){
+  var btns='<button class="btn btn-primary" onclick="exportSingleSession(\''+jesc(path)+'\')" style="margin-bottom:6px;font-size:11px">📦 单独导出此会话</button>';
+  area.innerHTML=btns+(d.type==='chat'?renderChat(d.messages):'<pre class="code">'+esc(d.content||'')+'</pre>');
+ }).catch(function(e){area.innerHTML='<div class="empty"><div class="big">❌</div>'+esc(e.message)+'</div>'});
+}
+function exportSingleSession(path){
+ api('/api/export/session',{method:'POST',body:JSON.stringify({path:path})}).then(function(r){
+  showToast(r.ok?'已导出: '+r.path:'失败: '+r.error,!r.ok);
+ });
 }
 function viewOCSessionFull(el){
  var sid=el.getAttribute('data-sid')||'',area=document.getElementById('spv');if(!area)return;
@@ -234,10 +248,16 @@ function viewOCSessionFull(el){
  api('/api/opencode/session/'+sid).then(function(d){
   if(d.error){area.innerHTML='<div class="empty"><div class="big">❌</div>'+esc(d.error)+'</div>';return}
   var s=d.session,ms=d.messages,h='<div class="breadcrumb"><button onclick="loadSessions()">← 返回</button><span>'+esc(s.title||'?')+' · '+ms.length+' 条</span></div>';
+  h+='<button class="btn btn-green" onclick="exportOCSession(\''+sid+'\')" style="margin-bottom:8px;font-size:11px">📦 导出此会话到 Codex</button>';
   h+='<div style="font-size:10px;color:var(--text2);margin-bottom:8px">📂 '+esc(s.directory||'')+'</div><div class="chat-view">';
   ms.forEach(function(m){var md=m.data||{},r=md.role||'assistant';(m.parts||[]).forEach(function(p){var pd=p.data||{},t=pd.type||'text',tx=pd.text||'';if(t==='reasoning')h+='<div class="chat-msg thinking"><div class="body">💭 '+esc((tx||'').substring(0,300))+'</div></div>';else if(t==='tool'||t==='tool_use')h+='<div class="chat-msg tool"><div class="body">🔧 '+esc((tx||'').substring(0,200))+'</div></div>';else{var cl=r==='user'?'user':'assistant';h+='<div class="chat-msg '+cl+'"><div class="ts"></div><div class="body">'+esc(tx)+'</div></div>';}});});
   h+='</div>';area.innerHTML=h;
  }).catch(function(e){area.innerHTML='<div class="empty"><div class="big">❌</div>'+esc(e.message)+'</div>'});
+}
+function exportOCSession(sid){
+ api('/api/bridge/o2c',{method:'POST',body:JSON.stringify({action:'sessions',session_id:sid})}).then(function(r){
+  showToast('已导出到 Codex');
+ }).catch(function(e){showToast('导出失败: '+e.message,true)});
 }
 
 // === Bridge ===

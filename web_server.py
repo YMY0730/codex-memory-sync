@@ -279,6 +279,62 @@ def api_export(data: dict[str, Any]):
         return {"ok": False, "error": str(e)}
 
 
+@app.post("/api/export/file")
+def api_export_single_file(data: dict[str, Any]):
+    """导出单个文件为 ZIP"""
+    path = data.get("path", "")
+    password = data.get("password")
+    fp = Path(path)
+    if not fp.exists():
+        return {"ok": False, "error": "文件不存在"}
+
+    parent_dir = fp.parent
+    output = CODEX_HOME / f"{fp.name}-export.zip"
+
+    try:
+        result = create_export_zip(
+            output,
+            memory_files=[fp] if fp.suffix.lower() == ".md" else [],
+            session_files=[fp] if fp.suffix.lower() == ".jsonl" else [],
+            rule_files=[fp] if fp.suffix.lower() == ".rules" else [],
+            memory_dir=parent_dir,
+            session_dir=parent_dir,
+            rule_dir=parent_dir,
+            password=password if password else None,
+        )
+        return {"ok": True, "path": str(result), "ext": result.suffix}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/api/export/session")
+def api_export_session(data: dict[str, Any]):
+    """导出单个 Codex 会话 JSONL 为压缩包"""
+    path = data.get("path", "")
+    password = data.get("password")
+    fp = Path(path)
+    if not fp.exists():
+        return {"ok": False, "error": "会话文件不存在"}
+
+    output = CODEX_HOME / f"session-{fp.stem}-export.zip"
+    parent_dir = fp.parent
+
+    try:
+        result = create_export_zip(
+            output,
+            memory_files=[],
+            session_files=[fp],
+            rule_files=[],
+            memory_dir=CODEX_HOME / "memories",
+            session_dir=parent_dir,
+            rule_dir=CODEX_HOME / "rules",
+            password=password if password else None,
+        )
+        return {"ok": True, "path": str(result), "ext": result.suffix}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Frontend
 # ══════════════════════════════════════════════════════════════════════════════
